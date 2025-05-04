@@ -1,0 +1,9 @@
+[package]
+name = "aspeed_ddk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ast1060-pac = { git = "https://github.com/rusty1968/ast1060-pac.git" }
+embedded-hal = "1.0.0"
+embedded-io = "0.6.1"
