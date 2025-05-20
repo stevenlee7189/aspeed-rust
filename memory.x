@@ -3,8 +3,8 @@ MEMORY
   /* NOTE 1 K = 1 KiBi = 1024 bytes */
   /* TODO Adjust these memory regions to match your device memory layout */
   /* These values correspond to the LM3S6965, one of the few devices QEMU can emulate */
-  FLASH : ORIGIN = 0x00000000, LENGTH = 256K
-  RAM : ORIGIN = 0x30000, LENGTH = 64K
+  FLASH : ORIGIN = 0x00000000, LENGTH = 128K
+  RAM : ORIGIN = 0x20000, LENGTH = 128K
 }
 
 /* This is where the call stack will be allocated. */
@@ -18,7 +18,7 @@ MEMORY
    section */
 /* This is required only on microcontrollers that store some configuration right
    after the vector table */
-/* _stext = ORIGIN(FLASH) + 0x400; */
+_stext = ORIGIN(FLASH) + 0x420;
 
 /* Example of putting non-initialized variables into custom RAM locations. */
 /* This assumes you have defined a region RAM2 above, and in the Rust
