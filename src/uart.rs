@@ -44,6 +44,14 @@ pub enum StopBits {
     Two,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum WordLength {
+    Five,
+    Six,
+    Seven,
+    Eight,
+}
+
 pub struct UartController<'a> {
     uart: Uart,
     delay: &'a mut dyn DelayNs,
@@ -51,16 +59,16 @@ pub struct UartController<'a> {
 
 impl UartController<'_> {
     /// # Safety
-    /// 
+    ///
     /// This function is unsafe because it directly interacts with hardware registers.
     ///
     /// Initializes the UART controller with the given configuration.
     /// # Arguments
-    /// 
+    ///
     /// * `config` - The configuration settings for the UART controller.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```
     /// let config = Config::default();
     /// unsafe {
@@ -69,7 +77,7 @@ impl UartController<'_> {
     /// ```
     pub unsafe fn init(&self, config: Config) {
         // Calculate baud divisor
-        let baud_divisor = (config.clock / (16 * config.baud_rate)) as u16; // Assuming 48 MHz clock
+        let baud_divisor = ((config.clock / 13) / (16 * config.baud_rate)) as u16; // Assuming 48 MHz clock
 
         // Enable DLAB to access divisor latch registers
         self.uart.uartlcr().write(|w| w.dlab().set_bit());
