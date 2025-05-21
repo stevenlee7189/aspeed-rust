@@ -20,6 +20,7 @@ impl DelayNs for DummyDelay {
     }
 }
 
+
 #[entry]
 fn main() -> ! {
 
@@ -31,15 +32,15 @@ fn main() -> ! {
     unsafe {
         uart_controller.init(Config {
             baud_rate: 115200,
-            word_length: 8,
+            word_length: aspeed_ddk::uart::WordLength::Eight as u8,
             parity: aspeed_ddk::uart::Parity::None,
             stop_bits: aspeed_ddk::uart::StopBits::One,
             clock: 24_000_000,
         });
     }
 
-    uart_controller.write_all(b"Hello, world!\n").unwrap();
-    uart_controller.write_all(b"aspeed_ddk!\n").unwrap();
+    uart_controller.write_all(b"\r\nHello, world!\r\n").unwrap();
+    uart_controller.write_all(b"aspeed_ddk!\r\n").unwrap();
 
     // Initialize the peripherals here if needed
     loop {}
