@@ -3,6 +3,7 @@
 
 use ast1060_pac::Peripherals;
 use aspeed_ddk::uart::{Config, UartController};
+use aspeed_ddk::digest::{DigestCtrl, DigestOp, HashAlgo, HaceController};
 
 use panic_halt as _;
 
@@ -10,6 +11,7 @@ use cortex_m_rt::entry;
 use embedded_hal::delay::DelayNs;
 
 use embedded_io::Write;
+
 pub struct DummyDelay;
 
 impl DelayNs for DummyDelay {
@@ -39,10 +41,24 @@ fn main() -> ! {
         });
     }
 
-    uart_controller.write_all(b"\r\nHello, world!\r\n").unwrap();
-    uart_controller.write_all(b"aspeed_ddk!\r\n").unwrap();
+    let hace = _peripherals.hace;
+    let scu = _peripherals.scu;
 
+    writeln!(uart_controller, "\r\nHello, world!\r\n").unwrap();
+
+    let mut hace_controller = HaceController::new(hace, scu);
+
+    unsafe {
+        let mut ctx =  hace_controller.init(HashAlgo::SHA256).unwrap() ;
+        ctx.update(b"hello_world").unwrap();
+
+        let mut output = [0u8; 32];
+        ctx.finalize(&mut output).unwrap();
+
+        // for byte in &output[..32] {
+        //     writeln!(uart_controller, "{:02x}", byte).unwrap();
+        // }
+    }
     // Initialize the peripherals here if needed
     loop {}
 }
-
