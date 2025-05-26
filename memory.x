@@ -5,6 +5,7 @@ MEMORY
   /* These values correspond to the LM3S6965, one of the few devices QEMU can emulate */
   FLASH : ORIGIN = 0x00000000, LENGTH = 128K
   RAM : ORIGIN = 0x20000, LENGTH = 128K
+  RAM_NC : ORIGIN = 0xA0000, LENGTH = 128K
 }
 
 /* This is where the call stack will be allocated. */
@@ -32,3 +33,11 @@ _stext = ORIGIN(FLASH) + 0x420;
      } > RAM2
    } INSERT AFTER .bss;
 */
+SECTIONS
+{
+  .ram_nc (NOLOAD) : ALIGN(4)
+  {
+    *(.ram_nc);
+    . = ALIGN(4);
+  } >RAM_NC
+}

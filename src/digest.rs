@@ -197,6 +197,12 @@ pub struct AspeedSg {
     pub addr: u32,
 }
 
+impl AspeedSg {
+    pub const fn new() -> Self {
+        Self { len: 0, addr: 0 }
+    }
+}
+
 #[repr(align(64))]
 pub struct AspeedHashContext {
     pub sg: [AspeedSg; 2],
@@ -213,6 +219,21 @@ impl Default for AspeedHashContext {
     fn default() -> Self {
         Self {
             sg: [AspeedSg::default(); 2],
+            digest: [0; 64],
+            method: 0,
+            block_size: 0,
+            digcnt: [0; 2],
+            bufcnt: 0,
+            buffer: [0; 256],
+            iv_size: 0,
+        }
+    }
+}
+
+impl AspeedHashContext {
+    pub const fn new() -> Self {
+        Self {
+            sg: [AspeedSg::new(), AspeedSg::new()],
             digest: [0; 64],
             method: 0,
             block_size: 0,
@@ -294,17 +315,20 @@ impl HashAlgo {
     }
 }
 
+#[link_section = ".ram_nc"]
+static mut HASH_CTX: AspeedHashContext = AspeedHashContext::new();
+
 pub struct HaceController {
     hace: Hace,
     scu: Scu,
     initialized: bool,
     algo: HashAlgo,
-    aspeed_hash_ctx: AspeedHashContext,
+    aspeed_hash_ctx: *mut AspeedHashContext,
 }
 
 impl<'a> HaceController {
     pub fn new(hace: Hace, scu:Scu) -> Self {
-        Self { hace, scu, initialized: false, algo: HashAlgo::SHA256, aspeed_hash_ctx: AspeedHashContext::default() }
+        Self { hace, scu, initialized: false, algo: HashAlgo::SHA256, aspeed_hash_ctx: core::ptr::addr_of_mut!(HASH_CTX)  }
     }
 }
 
@@ -321,22 +345,22 @@ impl DigestCtrl for HaceController {
             self.scu.scu084().write(|w| {
                 w.scu080clk_stop_ctrl_clear_reg().bits(1 << 13)
             });
-            self.scu.scu044().write(|w| w.bits(0x10));
+
             let mut delay = DummyDelay;
             delay.delay_ns(10000000);
-            self.scu.scua58().write(|w| {
-                w.cache_enbl().clear_bit()
-            });
+
+            // Release the hace reset
+            self.scu.scu044().write(|w| w.bits(0x10));
             self.initialized = true;
         }
 
         self.algo = params;
-        self.aspeed_hash_ctx.method = self.algo.hash_cmd();
+        self.ctx_mut().method = self.algo.hash_cmd();
         self.copy_iv_to_digest();
-        self.aspeed_hash_ctx.block_size = self.algo.block_size() as u32;
+        self.ctx_mut().block_size = self.algo.block_size() as u32;
 
-        self.aspeed_hash_ctx.bufcnt = 0;
-        self.aspeed_hash_ctx.digcnt = [0; 2];
+        self.ctx_mut().bufcnt = 0;
+        self.ctx_mut().digcnt = [0; 2];
         Ok(self)
     }
 }
@@ -354,82 +378,107 @@ impl<'a> OutputSize for &'a mut HaceController {
 impl<'a> DigestOp for &'a mut HaceController {
     unsafe fn update(&mut self, _input: &[u8]) -> Result<(), Self::Error> {
         let input_len = _input.len() as u32;
-        let (new_len, carry) = self.aspeed_hash_ctx.digcnt[0].overflowing_add(input_len as u64);
+        let (new_len, carry) = self.ctx_mut().digcnt[0].overflowing_add(input_len as u64);
 
-        self.aspeed_hash_ctx.digcnt[0] = new_len;
+        self.ctx_mut().digcnt[0] = new_len;
         if carry {
-            self.aspeed_hash_ctx.digcnt[1] += 1;
+            self.ctx_mut().digcnt[1] += 1;
         }
 
-        let start = self.aspeed_hash_ctx.bufcnt as usize;
+        let start = self.ctx_mut().bufcnt as usize;
         let end = start + input_len as usize;
-        if self.aspeed_hash_ctx.bufcnt + input_len < self.aspeed_hash_ctx.block_size {
-            self.aspeed_hash_ctx.buffer[start..end].copy_from_slice(_input);
-            self.aspeed_hash_ctx.bufcnt += input_len;
+        if self.ctx_mut().bufcnt + input_len < self.ctx_mut().block_size {
+            self.ctx_mut().buffer[start..end].copy_from_slice(_input);
+            self.ctx_mut().bufcnt += input_len;
             return Ok(());
         }
 
-        let remaining = (input_len + self.aspeed_hash_ctx.bufcnt) % self.aspeed_hash_ctx.block_size;
-        let total_len = (input_len + self.aspeed_hash_ctx.bufcnt) - remaining;
+        let remaining = (input_len + self.ctx_mut().bufcnt) % self.ctx_mut().block_size;
+        let total_len = (input_len + self.ctx_mut().bufcnt) - remaining;
         let mut i = 0;
 
-        if self.aspeed_hash_ctx.bufcnt != 0 {
-            self.aspeed_hash_ctx.sg[0].addr = self.aspeed_hash_ctx.buffer.as_ptr() as u32;
-            self.aspeed_hash_ctx.sg[0].len = self.aspeed_hash_ctx.bufcnt;
-            if total_len == self.aspeed_hash_ctx.bufcnt {
-                self.aspeed_hash_ctx.sg[0].addr = _input.as_ptr() as u32;
-                self.aspeed_hash_ctx.sg[0].len |= HACE_SG_LAST;
+        if self.ctx_mut().bufcnt != 0 {
+            self.ctx_mut().sg[0].addr = self.ctx_mut().buffer.as_ptr() as u32;
+            self.ctx_mut().sg[0].len = self.ctx_mut().bufcnt;
+            if total_len == self.ctx_mut().bufcnt {
+                self.ctx_mut().sg[0].addr = _input.as_ptr() as u32;
+                self.ctx_mut().sg[0].len |= HACE_SG_LAST;
             }
             i += 1;
         }
 
-        if total_len != self.aspeed_hash_ctx.bufcnt {
-            self.aspeed_hash_ctx.sg[i].addr = _input.as_ptr() as u32;
-            self.aspeed_hash_ctx.sg[i].len = (total_len - self.aspeed_hash_ctx.bufcnt) | HACE_SG_LAST;
+        if total_len != self.ctx_mut().bufcnt {
+            self.ctx_mut().sg[i].addr = _input.as_ptr() as u32;
+            self.ctx_mut().sg[i].len = (total_len - self.ctx_mut().bufcnt) | HACE_SG_LAST;
         }
 
         self.start_hash_operation(total_len);
 
         if remaining != 0 {
-            let src_start = (total_len - self.aspeed_hash_ctx.bufcnt) as usize;
+            let src_start = (total_len - self.ctx_mut().bufcnt) as usize;
             let src_end = src_start + remaining as usize;
 
-            self.aspeed_hash_ctx.buffer[..(remaining as usize)].copy_from_slice(&_input[src_start..src_end]);
-            self.aspeed_hash_ctx.bufcnt = remaining as u32;
+            self.ctx_mut().buffer[..(remaining as usize)].copy_from_slice(&_input[src_start..src_end]);
+            self.ctx_mut().bufcnt = remaining as u32;
         }
         Ok(())
     }
 
     unsafe fn finalize(&mut self, _output: &mut [u8]) -> Result<(), Self::Error> {
         self.fill_padding(0);
-        self.aspeed_hash_ctx.sg[0].addr = self.aspeed_hash_ctx.buffer.as_ptr() as u32;
-        self.aspeed_hash_ctx.sg[0].len = self.aspeed_hash_ctx.bufcnt | HACE_SG_LAST;
-        self.start_hash_operation(self.aspeed_hash_ctx.bufcnt);
-        _output.copy_from_slice(&self.aspeed_hash_ctx.digest[..self.algo.digest_size()]);
-        // clear comman register
+        let digest_len = self.algo.digest_size();
+
+        let (digest_ptr, bufcnt) = {
+            let ctx = self.ctx_mut();
+
+            ctx.sg[0].addr = ctx.buffer.as_ptr() as u32;
+            ctx.sg[0].len = ctx.bufcnt | HACE_SG_LAST;
+
+            (ctx.digest.as_ptr(), ctx.bufcnt)
+        };
+
+        self.start_hash_operation(bufcnt);
+
+        _output.copy_from_slice(core::slice::from_raw_parts(digest_ptr, digest_len));
+
+        {
+            let ctx = self.ctx_mut();
+            ctx.bufcnt = 0;
+            ctx.buffer.fill(0);
+            ctx.digest.fill(0);
+            ctx.digcnt = [0; 2];
+        }
+
         self.hace.hace30().write(|w| w.bits(0));
-        // clear buffer
-        self.aspeed_hash_ctx.bufcnt = 0;
-        self.aspeed_hash_ctx.buffer.fill(0);
-        self.aspeed_hash_ctx.digest.fill(0);
-        self.aspeed_hash_ctx.digcnt = [0; 2];
+
         Ok(())
     }
 }
 
 impl HaceController {
+    pub fn ctx_mut(&mut self) -> &mut AspeedHashContext {
+        unsafe { &mut *self.aspeed_hash_ctx }
+    }
+
     unsafe fn start_hash_operation(&mut self, _len: u32) {
         self.hace.hace1c().write(|w| w.hash_intflag().set_bit());
-        if (self.aspeed_hash_ctx.method & HACE_SG_EN) != 0 {
-            self.hace.hace20().write(|w| w.bits(self.aspeed_hash_ctx.sg.as_ptr() as u32));
-        } else {
-            self.hace.hace20().write(|w| w.bits(self.aspeed_hash_ctx.buffer.as_ptr() as u32));
-        }
+        let ctx = self.ctx_mut();
 
-        self.hace.hace24().write(|w| w.bits(self.aspeed_hash_ctx.digest.as_ptr() as u32));
-        self.hace.hace28().write(|w| w.bits(self.aspeed_hash_ctx.digest.as_ptr() as u32));
+        let src_addr = if (ctx.method & HACE_SG_EN) != 0 {
+            ctx.sg.as_ptr() as u32
+        } else {
+            ctx.buffer.as_ptr() as u32
+        };
+
+        let digest_addr = ctx.digest.as_ptr() as u32;
+        let method = ctx.method;
+
+        self.hace.hace1c().write(|w| w.hash_intflag().set_bit());
+        self.hace.hace20().write(|w| w.bits(src_addr));
+        self.hace.hace24().write(|w| w.bits(digest_addr));
+        self.hace.hace28().write(|w| w.bits(digest_addr));
         self.hace.hace2c().write(|w| w.bits(_len));
-        self.hace.hace30().write(|w| w.bits(self.aspeed_hash_ctx.method));
+        self.hace.hace30().write(|w| w.bits(method));
         // blocking wait until hash engine ready
         while self.hace.hace1c().read().hash_intflag().bit_is_clear() {
             // wait for the hash operation to complete
@@ -445,11 +494,11 @@ impl HaceController {
             core::slice::from_raw_parts(iv.as_ptr() as *const u8, iv.len() * 4)
         };
 
-        self.aspeed_hash_ctx.digest[..iv_bytes.len()].copy_from_slice(iv_bytes);
+        self.ctx_mut().digest[..iv_bytes.len()].copy_from_slice(iv_bytes);
     }
 
     fn fill_padding(&mut self, remaining: usize) {
-        let ctx = &mut self.aspeed_hash_ctx;
+        let ctx = &mut self.ctx_mut();
         let block_size = ctx.block_size as usize;
         let bufcnt = ctx.bufcnt as usize;
 

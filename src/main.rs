@@ -31,6 +31,13 @@ unsafe fn pre_init() {
     reg = read_volatile(jtag_pinmux_offset as *const u32);
     reg |= 0x1f << 25;
     write_volatile(jtag_pinmux_offset as *mut u32, reg);
+
+    let cache_ctrl_offset: u32 = 0x7e6e2a58;
+    write_volatile(cache_ctrl_offset as *mut u32, 0);
+    let cache_area_offset: u32 = 0x7e6e2a50;
+    let cacahe_val = 0x0003_ffff;
+    write_volatile(cache_area_offset as *mut u32, cacahe_val);
+    write_volatile(cache_ctrl_offset as *mut u32, 1);
 }
 
 pub struct DummyDelay;
@@ -45,12 +52,12 @@ impl DelayNs for DummyDelay {
 
 fn test_wdt( uart:&mut UartController<'_>) {
     //instantiates the controller for the hardware watchdog Wdt and Wdt1
-    let mut wdt0 = WdtController::<Wdt>::new(); 
+    let mut wdt0 = WdtController::<Wdt>::new();
     let mut wdt1 = WdtController::<Wdt1>::new();
     let mut delay = DummyDelay {};
 
     // Start watchdog with a timeout of 2000 milliseconds (2 seconds)
-    uart.write_all(b"start wdt\r\n").unwrap();
+    uart.write_all(b"\r\nstart wdt\r\n").unwrap();
     wdt0.start(MilliSeconds::millis(5000));
     wdt1.start(MilliSeconds::millis(10000));
     let mut cnt = 0;
