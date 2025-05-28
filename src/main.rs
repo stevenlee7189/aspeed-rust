@@ -1,18 +1,45 @@
 #![no_std]
 #![no_main]
 
+use core::sync::atomic::AtomicBool;
+// use core::arch::asm;
 use ast1060_pac::Peripherals;
 use aspeed_ddk::uart::{Config, UartController};
 use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::watchdog::WdtController;
 
 use fugit::MillisDurationU32 as MilliSeconds;
+use aspeed_ddk::digest::HaceController;
+
+use aspeed_ddk::hash_test::run_hash_tests;
 use panic_halt as _;
 
 use cortex_m_rt::entry;
 use embedded_hal::delay::DelayNs;
 
 use embedded_io::Write;
+use cortex_m_rt::pre_init;
+use core::ptr::{read_volatile, write_volatile};
+
+#[cfg(test)]
+mod hash_test;
+
+#[pre_init]
+unsafe fn pre_init() {
+    let jtag_pinmux_offset : u32 = 0x7e6e2000 + 0x41c;
+    let mut reg : u32;
+    reg = read_volatile(jtag_pinmux_offset as *const u32);
+    reg |= 0x1f << 25;
+    write_volatile(jtag_pinmux_offset as *mut u32, reg);
+
+    let cache_ctrl_offset: u32 = 0x7e6e2a58;
+    write_volatile(cache_ctrl_offset as *mut u32, 0);
+    let cache_area_offset: u32 = 0x7e6e2a50;
+    let cache_val = 0x0003_ffff;
+    write_volatile(cache_area_offset as *mut u32, cache_val);
+    write_volatile(cache_ctrl_offset as *mut u32, 1);
+}
+
 pub struct DummyDelay;
 
 impl DelayNs for DummyDelay {
@@ -25,12 +52,12 @@ impl DelayNs for DummyDelay {
 
 fn test_wdt( uart:&mut UartController<'_>) {
     //instantiates the controller for the hardware watchdog Wdt and Wdt1
-    let mut wdt0 = WdtController::<Wdt>::new(); 
+    let mut wdt0 = WdtController::<Wdt>::new();
     let mut wdt1 = WdtController::<Wdt1>::new();
     let mut delay = DummyDelay {};
 
     // Start watchdog with a timeout of 2000 milliseconds (2 seconds)
-    uart.write_all(b"start wdt\r\n").unwrap();
+    uart.write_all(b"\r\nstart wdt\r\n").unwrap();
     wdt0.start(MilliSeconds::millis(5000));
     wdt1.start(MilliSeconds::millis(10000));
     let mut cnt = 0;
@@ -50,6 +77,24 @@ fn test_wdt( uart:&mut UartController<'_>) {
     }
 }
 
+#[no_mangle]
+pub static HALT: AtomicBool = AtomicBool::new(true);
+
+#[macro_export]
+macro_rules! debug_halt {
+    () => {{
+        use core::sync::atomic::{AtomicBool, Ordering};
+        use core::arch::asm;
+
+        static HALT: AtomicBool = AtomicBool::new(true);
+
+        while HALT.load(Ordering::SeqCst) {
+            unsafe {
+                asm!("nop");
+            }
+        }
+    }};
+}
 
 #[entry]
 fn main() -> ! {
@@ -58,6 +103,9 @@ fn main() -> ! {
     let uart = _peripherals.uart;
     let mut delay = DummyDelay {};
 
+    // For jlink attach
+    // set aspeed_ddk::__cortex_m_rt_main::HALT.v.value = 0 in gdb
+    // debug_halt!();
     let mut uart_controller = UartController::new(uart, &mut delay);
     unsafe {
         uart_controller.init(Config {
@@ -69,8 +117,14 @@ fn main() -> ! {
         });
     }
 
-    uart_controller.write_all(b"\r\nHello, world!\r\n").unwrap();
-    uart_controller.write_all(b"aspeed_ddk!\r\n").unwrap();
+    let hace = _peripherals.hace;
+    let scu = _peripherals.scu;
+
+    writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
+
+    let mut hace_controller = HaceController::new(hace, scu);
+
+    run_hash_tests(&mut uart_controller, &mut hace_controller);
 
     test_wdt(&mut uart_controller);
     // Initialize the peripherals here if needed
