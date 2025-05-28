@@ -34,7 +34,7 @@ fn print_input(uart: &mut UartController, algo: &str, input: &[u8]) {
     writeln!(uart, "]:").unwrap();
 }
 
-pub fn run_hash_tests(uart: &mut UartController,hace: &mut HaceController) {
+pub fn run_hash_tests(uart: &mut UartController, hace: &mut HaceController) {
     run_hash(uart, hace, HashAlgo::SHA256, b"hello_world", 32);
     run_hash(uart, hace, HashAlgo::SHA384, b"hello_world", 48);
     run_hash(uart, hace, HashAlgo::SHA512, b"hello_world", 64);
