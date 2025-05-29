@@ -21,9 +21,6 @@ use embedded_io::Write;
 use cortex_m_rt::pre_init;
 use core::ptr::{read_volatile, write_volatile};
 
-#[cfg(test)]
-mod hash_test;
-
 #[pre_init]
 unsafe fn pre_init() {
     let jtag_pinmux_offset : u32 = 0x7e6e2000 + 0x41c;
