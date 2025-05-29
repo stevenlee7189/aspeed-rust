@@ -9,9 +9,9 @@ use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::watchdog::WdtController;
 
 use fugit::MillisDurationU32 as MilliSeconds;
-use aspeed_ddk::digest::HaceController;
+use aspeed_ddk::hash::HaceController;
 
-use aspeed_ddk::hash_test::run_hash_tests;
+use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use panic_halt as _;
 
 use cortex_m_rt::entry;
@@ -117,12 +117,12 @@ fn main() -> ! {
         });
     }
 
-    let hace = _peripherals.hace;
+    let mut hace = _peripherals.hace;
     let scu = _peripherals.scu;
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
-    let mut hace_controller = HaceController::new(hace, scu);
+    let mut hace_controller = HaceController::new(&mut hace, &scu);
 
     run_hash_tests(&mut uart_controller, &mut hace_controller);
 
