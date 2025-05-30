@@ -21,6 +21,9 @@ use embedded_io::Write;
 use cortex_m_rt::pre_init;
 use core::ptr::{read_volatile, write_volatile};
 
+
+
+
 #[pre_init]
 unsafe fn pre_init() {
     let jtag_pinmux_offset : u32 = 0x7e6e2000 + 0x41c;
@@ -37,7 +40,8 @@ unsafe fn pre_init() {
     write_volatile(cache_ctrl_offset as *mut u32, 1);
 }
 
-pub struct DummyDelay;
+#[derive(Default)]
+struct DummyDelay;
 
 impl DelayNs for DummyDelay {
     fn delay_ns(&mut self, _ns: u32) {
@@ -98,7 +102,7 @@ fn main() -> ! {
 
     let _peripherals = unsafe { Peripherals::steal() };
     let uart = _peripherals.uart;
-    let mut delay = DummyDelay {};
+    let mut delay = DummyDelay::default();
 
     // For jlink attach
     // set aspeed_ddk::__cortex_m_rt_main::HALT.v.value = 0 in gdb
@@ -119,7 +123,9 @@ fn main() -> ! {
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
-    let mut hace_controller = HaceController::new(&mut hace, &scu);
+
+    let mut delay = DummyDelay::default();
+    let mut hace_controller = HaceController::new(&mut hace, &scu, &mut delay);
 
     run_hash_tests(&mut uart_controller, &mut hace_controller);
 
