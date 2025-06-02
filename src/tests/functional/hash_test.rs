@@ -1,8 +1,11 @@
 use crate::uart::UartController;
 use crate::hash::{HaceController, HashAlgo};
+use embedded_hal::delay::DelayNs;
 use peripheral_traits_steven::digest::Digest;
 
 use embedded_io::Write;
+
+
 
 fn print_hex_array(uart: &mut UartController, data: &[u8], bytes_per_line: usize) {
     for (i, b) in data.iter().enumerate() {
@@ -35,14 +38,14 @@ fn print_input(uart: &mut UartController, algo: &str, input: &[u8]) {
     writeln!(uart, "]:").unwrap();
 }
 
-pub fn run_hash_tests(uart: &mut UartController, hace: &mut HaceController) {
+pub fn run_hash_tests<D>(uart: &mut UartController, hace: &mut HaceController<D>) where D: DelayNs{
     let mut input = *b"hello_world";
     run_hash(uart, hace, HashAlgo::SHA256, &mut input, 32);
     run_hash(uart, hace, HashAlgo::SHA384, &mut input, 48);
     run_hash(uart, hace, HashAlgo::SHA512, &mut input, 64);
 }
 
-fn run_hash(uart: &mut UartController, ctrl: &mut HaceController, algo: HashAlgo, input: &mut [u8], digest_len: usize) {
+fn run_hash<D: DelayNs>(uart: &mut UartController, ctrl: &mut HaceController<D>, algo: HashAlgo, input: &mut [u8], digest_len: usize) {
     let string_algo = match algo {
         HashAlgo::SHA1 => "SHA1",
         HashAlgo::SHA224 => "SHA224",

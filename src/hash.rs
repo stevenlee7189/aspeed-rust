@@ -3,15 +3,6 @@ use ast1060_pac::Scu;
 use embedded_hal::delay::DelayNs;
 use peripheral_traits_steven::digest::{Digest, ErrorType};
 use core::sync::atomic::{AtomicBool, Ordering};
-struct DummyDelay;
-
-impl embedded_hal::delay::DelayNs for DummyDelay {
-    fn delay_ns(&mut self, ns: u32) {
-        for _ in 0..(ns / 100) {
-            cortex_m::asm::nop();
-        }
-    }
-}
 
 static HACE_ENABLED: AtomicBool = AtomicBool::new(false);
 
@@ -201,24 +192,25 @@ impl HashAlgo {
 #[link_section = ".ram_nc"]
 static mut HASH_CTX: AspeedHashContext = AspeedHashContext::new();
 
-pub struct HaceController<'a> {
+pub struct HaceController<'a, D: DelayNs> {
     hace: &'a Hace,
     scu: &'a Scu,
     algo: HashAlgo,
     aspeed_hash_ctx: *mut AspeedHashContext,
+    delay: &'a mut D,
 }
 
-impl<'a> HaceController<'a> {
-    pub fn new(hace: &'a mut Hace, scu: &'a Scu) -> Self {
-        Self { hace, scu, algo: HashAlgo::SHA256, aspeed_hash_ctx: core::ptr::addr_of_mut!(HASH_CTX)  }
+impl<'a, D: DelayNs> HaceController<'a, D> {
+    pub fn new(hace: &'a mut Hace, scu: &'a Scu, delay: &'a mut D) -> Self {
+        Self { hace, scu, algo: HashAlgo::SHA256, aspeed_hash_ctx: core::ptr::addr_of_mut!(HASH_CTX), delay }
     }
 }
 
-impl ErrorType for HaceController<'_> {
+impl<'a, D: DelayNs> ErrorType for HaceController<'a, D> {
     type Error = core::convert::Infallible;
 }
 
-impl<'a> Digest for HaceController<'a> {
+impl<'a, D: DelayNs> Digest for HaceController<'a, D> {
     // type InitParams = HashAlgo;
     type InitParams = HashAlgo;
 
@@ -230,8 +222,7 @@ impl<'a> Digest for HaceController<'a> {
                     w.scu080clk_stop_ctrl_clear_reg().bits(1 << 13)
                 });
 
-                let mut delay = DummyDelay;
-                delay.delay_ns(10000000);
+                self.delay.delay_ns(10000000);
 
                 // Release the hace reset
                 self.scu.scu044().write(|w| w.bits(0x10));
@@ -342,11 +333,8 @@ impl<'a> Digest for HaceController<'a> {
     }
 }
 
-impl<'a> ErrorType for &'a mut HaceController<'a> {
-    type Error = core::convert::Infallible;
-}
 
-impl HaceController<'_> {
+impl <'a, D: DelayNs> HaceController<'_, D> {
     pub fn ctx_mut(&mut self) -> &mut AspeedHashContext {
         unsafe { &mut *self.aspeed_hash_ctx }
     }
