@@ -1,70 +1,134 @@
 use ast1060_pac::Hace;
-use ast1060_pac::Scu;
-use embedded_hal::delay::DelayNs;
-use peripheral_traits_steven::digest::{Digest, ErrorType};
-use core::sync::atomic::{AtomicBool, Ordering};
+use proposed_traits::digest::*;
+use core::convert::Infallible;
 
-static HACE_ENABLED: AtomicBool = AtomicBool::new(false);
+#[link_section = ".ram_nc"]
+static mut HASH_CTX: AspeedHashContext = AspeedHashContext::new();
+
 
 const SHA1_IV: [u32; 8] = [
-    0x0123_4567, 0x89ab_cdef, 0xfedc_ba98, 0x7654_3210,
-    0xf0e1_d2c3, 0, 0, 0,
+    0x0123_4567,
+    0x89ab_cdef,
+    0xfedc_ba98,
+    0x7654_3210,
+    0xf0e1_d2c3,
+    0,
+    0,
+    0,
 ];
 
 const SHA224_IV: [u32; 8] = [
-    0xd89e_05c1, 0x07d5_7c36, 0x17dd_7030, 0x3959_0ef7,
-    0x310b_c0ff, 0x1115_5868, 0xa78f_f964, 0xa44f_fabe,
+    0xd89e_05c1,
+    0x07d5_7c36,
+    0x17dd_7030,
+    0x3959_0ef7,
+    0x310b_c0ff,
+    0x1115_5868,
+    0xa78f_f964,
+    0xa44f_fabe,
 ];
 
 const SHA256_IV: [u32; 8] = [
-    0x67e6_096a, 0x85ae_67bb, 0x72f3_6e3c, 0x3af5_4fa5,
-    0x7f52_0e51, 0x8c68_059b, 0xabd9_831f, 0x19cd_e05b,
+    0x67e6_096a,
+    0x85ae_67bb,
+    0x72f3_6e3c,
+    0x3af5_4fa5,
+    0x7f52_0e51,
+    0x8c68_059b,
+    0xabd9_831f,
+    0x19cd_e05b,
 ];
 
 const SHA384_IV: [u32; 16] = [
-    0x5d9d_bbcb, 0xd89e_05c1, 0x2a29_9a62, 0x07d5_7c36,
-    0x5a01_5991, 0x17dd_7030, 0xd8ec_2f15, 0x3959_0ef7,
-    0x6726_3367, 0x310b_c0ff, 0x874a_b48e, 0x1115_5868,
-    0x0d2e_0cdb, 0xa78f_f964, 0x1d48_b547, 0xa44f_fabe,
+    0x5d9d_bbcb,
+    0xd89e_05c1,
+    0x2a29_9a62,
+    0x07d5_7c36,
+    0x5a01_5991,
+    0x17dd_7030,
+    0xd8ec_2f15,
+    0x3959_0ef7,
+    0x6726_3367,
+    0x310b_c0ff,
+    0x874a_b48e,
+    0x1115_5868,
+    0x0d2e_0cdb,
+    0xa78f_f964,
+    0x1d48_b547,
+    0xa44f_fabe,
 ];
 
 const SHA512_IV: [u32; 16] = [
-    0x67e6_096a, 0x08c9_bcf3, 0x85ae_67bb, 0x3ba7_ca84,
-    0x72f3_6e3c, 0x2bf8_94fe, 0x3af5_4fa5, 0xf136_1d5f,
-    0x7f52_0e51, 0xd182_e6ad, 0x8c68_059b, 0x1f6c_3e2b,
-    0xabd9_831f, 0x6bbd_41fb, 0x19cd_e05b, 0x7921_7e13,
+    0x67e6_096a,
+    0x08c9_bcf3,
+    0x85ae_67bb,
+    0x3ba7_ca84,
+    0x72f3_6e3c,
+    0x2bf8_94fe,
+    0x3af5_4fa5,
+    0xf136_1d5f,
+    0x7f52_0e51,
+    0xd182_e6ad,
+    0x8c68_059b,
+    0x1f6c_3e2b,
+    0xabd9_831f,
+    0x6bbd_41fb,
+    0x19cd_e05b,
+    0x7921_7e13,
 ];
 
 const SHA512_224_IV: [u32; 16] = [
-    0xC837_3D8C, 0xA24D_5419, 0x6699_E173, 0xD6D4_DC89,
-    0xAEB7_FA1D, 0x829C_FF32, 0x14D5_9D67, 0xCF9F_2F58,
-    0x692B_6D0F, 0xA84D_D47B, 0x736F_E377, 0x4289_C404,
-    0xA885_9D3F, 0xC836_1D6A, 0xADE6_1211, 0xA192_D691,
+    0xC837_3D8C,
+    0xA24D_5419,
+    0x6699_E173,
+    0xD6D4_DC89,
+    0xAEB7_FA1D,
+    0x829C_FF32,
+    0x14D5_9D67,
+    0xCF9F_2F58,
+    0x692B_6D0F,
+    0xA84D_D47B,
+    0x736F_E377,
+    0x4289_C404,
+    0xA885_9D3F,
+    0xC836_1D6A,
+    0xADE6_1211,
+    0xA192_D691,
 ];
 
 const SHA512_256_IV: [u32; 16] = [
-    0x9421_3122, 0x2CF7_2BFC, 0xA35F_559F, 0xC264_4CC8,
-    0x6BB8_9323, 0x51B1_536F, 0x1977_3896, 0xBDEA_4059,
-    0xE23E_2896, 0xE3FF_8EA8, 0x251E_5EBE, 0x9239_8653,
-    0xFC99_012B, 0xAAB8_852C, 0xDC2D_B70E, 0xA22C_C581,
+    0x9421_3122,
+    0x2CF7_2BFC,
+    0xA35F_559F,
+    0xC264_4CC8,
+    0x6BB8_9323,
+    0x51B1_536F,
+    0x1977_3896,
+    0xBDEA_4059,
+    0xE23E_2896,
+    0xE3FF_8EA8,
+    0x251E_5EBE,
+    0x9239_8653,
+    0xFC99_012B,
+    0xAAB8_852C,
+    0xDC2D_B70E,
+    0xA22C_C581,
 ];
 
-const HACE_SHA_BE_EN: u32        = 1 << 3;
-const HACE_SG_EN: u32            = 1 << 18;
-const HACE_CMD_ACC_MODE: u32     = 1 << 8;
+const HACE_SHA_BE_EN: u32 = 1 << 3;
+const HACE_SG_EN: u32 = 1 << 18;
+const HACE_CMD_ACC_MODE: u32 = 1 << 8;
 
-const HACE_ALGO_SHA1: u32        = 1 << 5;
-const HACE_ALGO_SHA224: u32      = 1 << 6;
-const HACE_ALGO_SHA256: u32      = (1 << 4) | (1 << 6);
-const HACE_ALGO_SHA512: u32      = (1 << 5) | (1 << 6);
-const HACE_ALGO_SHA384: u32      = (1 << 5) | (1 << 6) | (1 << 10);
-const HACE_ALGO_SHA512_224: u32  = (1 << 5) | (1 << 6) | (1 << 10) | (1 << 11);
-const HACE_ALGO_SHA512_256: u32  = (1 << 5) | (1 << 6) | (1 << 11);
+const HACE_ALGO_SHA1: u32 = 1 << 5;
+const HACE_ALGO_SHA224: u32 = 1 << 6;
+const HACE_ALGO_SHA256: u32 = (1 << 4) | (1 << 6);
+const HACE_ALGO_SHA512: u32 = (1 << 5) | (1 << 6);
+const HACE_ALGO_SHA384: u32 = (1 << 5) | (1 << 6) | (1 << 10);
+const HACE_ALGO_SHA512_224: u32 = (1 << 5) | (1 << 6) | (1 << 10) | (1 << 11);
+const HACE_ALGO_SHA512_256: u32 = (1 << 5) | (1 << 6) | (1 << 11);
 
-const HACE_SG_LAST: u32          = 1 << 31;
-
-#[derive(Default)]
-#[derive(Copy, Clone)]
+const HACE_SG_LAST: u32 = 1 << 31;
+#[derive(Default, Copy, Clone)]
 pub struct AspeedSg {
     pub len: u32,
     pub addr: u32,
@@ -76,6 +140,8 @@ impl AspeedSg {
     }
 }
 
+
+#[repr(C)]
 #[repr(align(64))]
 pub struct AspeedHashContext {
     pub sg: [AspeedSg; 2],
@@ -143,43 +209,45 @@ impl HashAlgo {
     pub fn block_size(&self) -> usize {
         match self {
             HashAlgo::SHA1 | HashAlgo::SHA224 | HashAlgo::SHA256 => 64,
-            HashAlgo::SHA384 | HashAlgo::SHA512 | HashAlgo::SHA512_224 | HashAlgo::SHA512_256 => 128,
+            HashAlgo::SHA384 | HashAlgo::SHA512 | HashAlgo::SHA512_224 | HashAlgo::SHA512_256 => {
+                128
+            }
         }
     }
 
     pub fn bitmask(&self) -> u32 {
         match self {
-            HashAlgo::SHA1        => HACE_ALGO_SHA1,
-            HashAlgo::SHA224      => HACE_ALGO_SHA224,
-            HashAlgo::SHA256      => HACE_ALGO_SHA256,
-            HashAlgo::SHA512      => HACE_ALGO_SHA512,
-            HashAlgo::SHA384      => HACE_ALGO_SHA384,
-            HashAlgo::SHA512_224  => HACE_ALGO_SHA512_224,
-            HashAlgo::SHA512_256  => HACE_ALGO_SHA512_256,
+            HashAlgo::SHA1 => HACE_ALGO_SHA1,
+            HashAlgo::SHA224 => HACE_ALGO_SHA224,
+            HashAlgo::SHA256 => HACE_ALGO_SHA256,
+            HashAlgo::SHA512 => HACE_ALGO_SHA512,
+            HashAlgo::SHA384 => HACE_ALGO_SHA384,
+            HashAlgo::SHA512_224 => HACE_ALGO_SHA512_224,
+            HashAlgo::SHA512_256 => HACE_ALGO_SHA512_256,
         }
     }
 
     pub fn iv(&self) -> &'static [u32] {
         match self {
-            HashAlgo::SHA1        => &SHA1_IV,
-            HashAlgo::SHA224      => &SHA224_IV,
-            HashAlgo::SHA256      => &SHA256_IV,
-            HashAlgo::SHA384      => &SHA384_IV,
-            HashAlgo::SHA512      => &SHA512_IV,
-            HashAlgo::SHA512_224  => &SHA512_224_IV,
-            HashAlgo::SHA512_256  => &SHA512_256_IV,
+            HashAlgo::SHA1 => &SHA1_IV,
+            HashAlgo::SHA224 => &SHA224_IV,
+            HashAlgo::SHA256 => &SHA256_IV,
+            HashAlgo::SHA384 => &SHA384_IV,
+            HashAlgo::SHA512 => &SHA512_IV,
+            HashAlgo::SHA512_224 => &SHA512_224_IV,
+            HashAlgo::SHA512_256 => &SHA512_256_IV,
         }
     }
 
     pub fn iv_size(&self) -> usize {
         match self {
-            HashAlgo::SHA1        => SHA1_IV.len(),
-            HashAlgo::SHA224      => SHA224_IV.len(),
-            HashAlgo::SHA256      => SHA256_IV.len(),
-            HashAlgo::SHA384      => SHA384_IV.len(),
-            HashAlgo::SHA512      => SHA512_IV.len(),
-            HashAlgo::SHA512_224  => SHA512_224_IV.len(),
-            HashAlgo::SHA512_256  => SHA512_256_IV.len(),
+            HashAlgo::SHA1 => SHA1_IV.len(),
+            HashAlgo::SHA224 => SHA224_IV.len(),
+            HashAlgo::SHA256 => SHA256_IV.len(),
+            HashAlgo::SHA384 => SHA384_IV.len(),
+            HashAlgo::SHA512 => SHA512_IV.len(),
+            HashAlgo::SHA512_224 => SHA512_224_IV.len(),
+            HashAlgo::SHA512_256 => SHA512_256_IV.len(),
         }
     }
 
@@ -189,152 +257,30 @@ impl HashAlgo {
     }
 }
 
-#[link_section = ".ram_nc"]
-static mut HASH_CTX: AspeedHashContext = AspeedHashContext::new();
 
-pub struct HaceController<'a, D: DelayNs> {
-    hace: &'a Hace,
-    scu: &'a Scu,
+pub struct Controller {
+    hace: Hace,
     algo: HashAlgo,
     aspeed_hash_ctx: *mut AspeedHashContext,
-    delay: &'a mut D,
 }
 
-impl<'a, D: DelayNs> HaceController<'a, D> {
-    pub fn new(hace: &'a mut Hace, scu: &'a Scu, delay: &'a mut D) -> Self {
-        Self { hace, scu, algo: HashAlgo::SHA256, aspeed_hash_ctx: core::ptr::addr_of_mut!(HASH_CTX), delay }
-    }
-}
-
-impl<'a, D: DelayNs> ErrorType for HaceController<'a, D> {
-    type Error = core::convert::Infallible;
-}
-
-impl<'a, D: DelayNs> Digest for HaceController<'a, D> {
-    // type InitParams = HashAlgo;
-    type InitParams = HashAlgo;
-
-    fn init(&mut self, params: Self::InitParams) -> Result<(), Self::Error> {
-                                                       //
-        unsafe {
-            if !HACE_ENABLED.load(Ordering::SeqCst) {
-                self.scu.scu084().write(|w| {
-                    w.scu080clk_stop_ctrl_clear_reg().bits(1 << 13)
-                });
-
-                self.delay.delay_ns(10000000);
-
-                // Release the hace reset
-                self.scu.scu044().write(|w| w.bits(0x10));
-                HACE_ENABLED.store(true, Ordering::Relaxed);
-            }
+impl Controller {
+    pub fn new(hace: Hace) -> Self {
+        Self {
+            hace,
+            algo: HashAlgo::SHA256,
+            aspeed_hash_ctx: core::ptr::addr_of_mut!(HASH_CTX),
         }
-        self.algo = params;
-        self.ctx_mut().method = self.algo.hash_cmd();
-        self.copy_iv_to_digest();
-        self.ctx_mut().block_size = self.algo.block_size() as u32;
-        self.ctx_mut().bufcnt = 0;
-        self.ctx_mut().digcnt = [0; 2];
-
-        Ok(())
-    }
-
-    fn update(&mut self, _input: &mut [u8]) -> Result<(), Self::Error> {
-        let input_len = _input.len() as u32;
-        let (new_len, carry) = self.ctx_mut().digcnt[0].overflowing_add(input_len as u64);
-
-        self.ctx_mut().digcnt[0] = new_len;
-        if carry {
-            self.ctx_mut().digcnt[1] += 1;
-        }
-
-        let start = self.ctx_mut().bufcnt as usize;
-        let end = start + input_len as usize;
-        if self.ctx_mut().bufcnt + input_len < self.ctx_mut().block_size {
-            self.ctx_mut().buffer[start..end].copy_from_slice(_input);
-            self.ctx_mut().bufcnt += input_len;
-            return Ok(());
-        }
-
-        let remaining = (input_len + self.ctx_mut().bufcnt) % self.ctx_mut().block_size;
-        let total_len = (input_len + self.ctx_mut().bufcnt) - remaining;
-        let mut i = 0;
-
-        if self.ctx_mut().bufcnt != 0 {
-            self.ctx_mut().sg[0].addr = self.ctx_mut().buffer.as_ptr() as u32;
-            self.ctx_mut().sg[0].len = self.ctx_mut().bufcnt;
-            if total_len == self.ctx_mut().bufcnt {
-                self.ctx_mut().sg[0].addr = _input.as_ptr() as u32;
-                self.ctx_mut().sg[0].len |= HACE_SG_LAST;
-            }
-            i += 1;
-        }
-
-        if total_len != self.ctx_mut().bufcnt {
-            self.ctx_mut().sg[i].addr = _input.as_ptr() as u32;
-            self.ctx_mut().sg[i].len = (total_len - self.ctx_mut().bufcnt) | HACE_SG_LAST;
-        }
-
-        self.start_hash_operation(total_len);
-
-        if remaining != 0 {
-            let src_start = (total_len - self.ctx_mut().bufcnt) as usize;
-            let src_end = src_start + remaining as usize;
-
-            self.ctx_mut().buffer[..(remaining as usize)].copy_from_slice(&_input[src_start..src_end]);
-            self.ctx_mut().bufcnt = remaining as u32;
-        }
-        Ok(())
-    }
-
-    fn reset(&mut self) -> Result<(), Self::Error> {
-        {
-            let ctx = self.ctx_mut();
-            ctx.bufcnt = 0;
-            ctx.buffer.fill(0);
-            ctx.digest.fill(0);
-            ctx.digcnt = [0; 2];
-        }
-        Ok(())
-    }
-
-    fn finalize(&mut self, _output: &mut [u8]) -> Result<(), Self::Error> {
-        self.fill_padding(0);
-        let digest_len = self.algo.digest_size();
-
-        let (digest_ptr, bufcnt) = {
-            let ctx = self.ctx_mut();
-
-            ctx.sg[0].addr = ctx.buffer.as_ptr() as u32;
-            ctx.sg[0].len = ctx.bufcnt | HACE_SG_LAST;
-
-            (ctx.digest.as_ptr(), ctx.bufcnt)
-        };
-
-        self.start_hash_operation(bufcnt);
-
-        unsafe {
-            _output.copy_from_slice(core::slice::from_raw_parts(digest_ptr, digest_len));
-        }
-
-        {
-            let ctx = self.ctx_mut();
-            ctx.bufcnt = 0;
-            ctx.buffer.fill(0);
-            ctx.digest.fill(0);
-            ctx.digcnt = [0; 2];
-        }
-
-        unsafe {
-            self.hace.hace30().write(|w| w.bits(0));
-        }
-
-        Ok(())
     }
 }
 
 
-impl <'a, D: DelayNs> HaceController<'_, D> {
+// Implement the required trait for Controller
+impl<'a> proposed_traits::digest::ErrorType for Controller {
+    type Error = Infallible; // Define your error type here
+}
+
+impl Controller {
     pub fn ctx_mut(&mut self) -> &mut AspeedHashContext {
         unsafe { &mut *self.aspeed_hash_ctx }
     }
@@ -352,7 +298,6 @@ impl <'a, D: DelayNs> HaceController<'_, D> {
         let digest_addr = ctx.digest.as_ptr() as u32;
         let method = ctx.method;
 
-
         unsafe {
             self.hace.hace1c().write(|w| w.hash_intflag().set_bit());
             self.hace.hace20().write(|w| w.bits(src_addr));
@@ -366,15 +311,12 @@ impl <'a, D: DelayNs> HaceController<'_, D> {
                 cortex_m::asm::nop();
             }
         }
-        // let mut delay = DummyDelay;
-        // delay.delay_ns(10000000);
     }
 
     fn copy_iv_to_digest(&mut self) {
         let iv = self.algo.iv();
-        let iv_bytes = unsafe {
-            core::slice::from_raw_parts(iv.as_ptr() as *const u8, iv.len() * 4)
-        };
+        let iv_bytes =
+            unsafe { core::slice::from_raw_parts(iv.as_ptr() as *const u8, iv.len() * 4) };
 
         self.ctx_mut().digest[..iv_bytes.len()].copy_from_slice(iv_bytes);
     }
@@ -386,9 +328,17 @@ impl <'a, D: DelayNs> HaceController<'_, D> {
 
         let index = (bufcnt + remaining) & (block_size - 1);
         let padlen = if block_size == 64 {
-            if index < 56 { 56 - index } else { 64 + 56 - index }
+            if index < 56 {
+                56 - index
+            } else {
+                64 + 56 - index
+            }
         } else {
-            if index < 112 { 112 - index } else { 128 + 112 - index }
+            if index < 112 {
+                112 - index
+            } else {
+                128 + 112 - index
+            }
         };
 
         ctx.buffer[bufcnt] = 0x80;
@@ -407,5 +357,121 @@ impl <'a, D: DelayNs> HaceController<'_, D> {
 
             ctx.bufcnt += (padlen + 16) as u32;
         }
+    }
+}
+
+
+impl DigestInit for Controller {
+    type InitParams = HashAlgo; // Define your InitParams type here
+    type OpContext<'a> = OpContextImpl<'a> where Self: 'a; // Define your OpContext type here
+
+    fn init<'a>(&'a mut self, init_params: Self::InitParams) -> Result<Self::OpContext<'a>, Self::Error> {
+
+        self.algo = init_params;
+        self.ctx_mut().method = self.algo.hash_cmd();
+        self.copy_iv_to_digest();
+        self.ctx_mut().block_size = self.algo.block_size() as u32;
+        self.ctx_mut().bufcnt = 0;
+        self.ctx_mut().digcnt = [0; 2];
+
+
+        Ok(OpContextImpl {
+            controller: self,
+        })
+    }
+}
+
+pub struct OpContextImpl<'a> {
+    pub controller: &'a mut Controller,
+}
+
+impl<'a> proposed_traits::digest::ErrorType for OpContextImpl<'a> {
+    type Error = Infallible;
+}
+
+impl<'a> DigestOp for OpContextImpl<'a> {
+
+    fn update(&mut self, _input: &[u8]) -> Result<(), Self::Error> {
+        let input_len = _input.len() as u32;
+        let (new_len, carry) = self.controller.ctx_mut().digcnt[0].overflowing_add(input_len as u64);
+
+        self.controller.ctx_mut().digcnt[0] = new_len;
+        if carry {
+            self.controller.ctx_mut().digcnt[1] += 1;
+        }
+
+        let start = self.controller.ctx_mut().bufcnt as usize;
+        let end = start + input_len as usize;
+        if self.controller.ctx_mut().bufcnt + input_len < self.controller.ctx_mut().block_size {
+            self.controller.ctx_mut().buffer[start..end].copy_from_slice(_input);
+            self.controller.ctx_mut().bufcnt += input_len;
+            return Ok(());
+        }
+
+        let remaining = (input_len + self.controller.ctx_mut().bufcnt) % self.controller.ctx_mut().block_size;
+        let total_len = (input_len + self.controller.ctx_mut().bufcnt) - remaining;
+        let mut i = 0;
+
+        if self.controller.ctx_mut().bufcnt != 0 {
+            self.controller.ctx_mut().sg[0].addr = self.controller.ctx_mut().buffer.as_ptr() as u32;
+            self.controller.ctx_mut().sg[0].len = self.controller.ctx_mut().bufcnt;
+            if total_len == self.controller.ctx_mut().bufcnt {
+                self.controller.ctx_mut().sg[0].addr = _input.as_ptr() as u32;
+                self.controller.ctx_mut().sg[0].len |= HACE_SG_LAST;
+            }
+            i += 1;
+        }
+
+        if total_len != self.controller.ctx_mut().bufcnt {
+            self.controller.ctx_mut().sg[i].addr = _input.as_ptr() as u32;
+            self.controller.ctx_mut().sg[i].len = (total_len - self.controller.ctx_mut().bufcnt) | HACE_SG_LAST;
+        }
+
+        self.controller.start_hash_operation(total_len);
+
+        if remaining != 0 {
+            let src_start = (total_len - self.controller.ctx_mut().bufcnt) as usize;
+            let src_end = src_start + remaining as usize;
+
+            self.controller.ctx_mut().buffer[..(remaining as usize)]
+                .copy_from_slice(&_input[src_start..src_end]);
+            self.controller.ctx_mut().bufcnt = remaining as u32;
+        }
+        Ok(())
+    }
+
+
+    fn finalize(&mut self, _output: &mut [u8]) -> Result<(), Self::Error> {
+        self.controller.fill_padding(0);
+        let digest_len = self.controller.algo.digest_size();
+
+        let (digest_ptr, bufcnt) = {
+            let ctx = self.controller.ctx_mut();
+
+            ctx.sg[0].addr = ctx.buffer.as_ptr() as u32;
+            ctx.sg[0].len = ctx.bufcnt | HACE_SG_LAST;
+
+            (ctx.digest.as_ptr(), ctx.bufcnt)
+        };
+
+        self.controller.start_hash_operation(bufcnt);
+
+        unsafe {
+            _output.copy_from_slice(core::slice::from_raw_parts(digest_ptr, digest_len));
+        }
+
+        {
+            let ctx = self.controller.ctx_mut();
+            ctx.bufcnt = 0;
+            ctx.buffer.fill(0);
+            ctx.digest.fill(0);
+            ctx.digcnt = [0; 2];
+        }
+
+        unsafe {
+            self.controller.hace.hace30().write(|w| w.bits(0));
+        }
+
+        Ok(()) // Return the final output
     }
 }

@@ -9,7 +9,8 @@ use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::watchdog::WdtController;
 
 use fugit::MillisDurationU32 as MilliSeconds;
-use aspeed_ddk::hash::HaceController;
+use aspeed_ddk::hash::Controller;
+use aspeed_ddk::syscon::SysCon;
 
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use panic_halt as _;
@@ -118,14 +119,19 @@ fn main() -> ! {
         });
     }
 
-    let mut hace = _peripherals.hace;
+    let hace = _peripherals.hace;
     let scu = _peripherals.scu;
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
 
-    let mut delay = DummyDelay::default();
-    let mut hace_controller = HaceController::new(&mut hace, &scu, &mut delay);
+    // Enable HACE (Hash and Crypto Engine)
+    let delay = DummyDelay::default();
+    // let scu = ast1060_pac::Scu::take().unwrap();
+    let mut syscon = SysCon::new(delay, scu);
+    syscon.enable_hace();
+
+    let mut hace_controller = Controller::new(hace);
 
     run_hash_tests(&mut uart_controller, &mut hace_controller);
 

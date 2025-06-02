@@ -1,8 +1,6 @@
 use crate::uart::UartController;
-use crate::hash::{HaceController, HashAlgo};
-use embedded_hal::delay::DelayNs;
-use peripheral_traits_steven::digest::Digest;
-
+use crate::hash::{Controller, OpContextImpl, HashAlgo};
+use proposed_traits::digest::{DigestInit, DigestOp};
 use embedded_io::Write;
 
 
@@ -38,14 +36,14 @@ fn print_input(uart: &mut UartController, algo: &str, input: &[u8]) {
     writeln!(uart, "]:").unwrap();
 }
 
-pub fn run_hash_tests<D>(uart: &mut UartController, hace: &mut HaceController<D>) where D: DelayNs{
+pub fn run_hash_tests(uart: &mut UartController, hace: &mut Controller) {
     let mut input = *b"hello_world";
     run_hash(uart, hace, HashAlgo::SHA256, &mut input, 32);
     run_hash(uart, hace, HashAlgo::SHA384, &mut input, 48);
     run_hash(uart, hace, HashAlgo::SHA512, &mut input, 64);
 }
 
-fn run_hash<D: DelayNs>(uart: &mut UartController, ctrl: &mut HaceController<D>, algo: HashAlgo, input: &mut [u8], digest_len: usize) {
+fn run_hash(uart: &mut UartController, ctrl: &mut Controller, algo: HashAlgo, input: &mut [u8], digest_len: usize) {
     let string_algo = match algo {
         HashAlgo::SHA1 => "SHA1",
         HashAlgo::SHA224 => "SHA224",
@@ -58,10 +56,12 @@ fn run_hash<D: DelayNs>(uart: &mut UartController, ctrl: &mut HaceController<D>,
 
     ctrl.init(algo).unwrap();
 
-    ctrl.update(input).unwrap();
+    let mut ctx = OpContextImpl { controller: ctrl };
+
+    ctx.update(input).unwrap();
 
     let mut output = [0u8; 64]; // max buffer
-    ctrl.finalize(&mut output[..digest_len]).unwrap();
+    ctx.finalize(&mut output[..digest_len]).unwrap();
 
     print_input(uart, string_algo, input);
     print_hex_array(uart, &output[..digest_len], 16);
