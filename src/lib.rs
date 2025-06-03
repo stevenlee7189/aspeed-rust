@@ -7,6 +7,7 @@ pub mod hash;
 pub mod hmac;
 pub mod rsa;
 pub mod syscon;
+pub mod gpio;
 pub mod tests;
 pub mod uart;
 pub mod watchdog;
