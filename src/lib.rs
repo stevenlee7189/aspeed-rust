@@ -13,6 +13,7 @@ pub mod rsa;
 pub mod spi;
 pub mod spimonitor;
 pub mod syscon;
+pub mod gpio;
 pub mod tests;
 pub mod uart;
 pub mod watchdog;
