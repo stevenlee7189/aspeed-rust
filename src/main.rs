@@ -12,9 +12,11 @@ use fugit::MillisDurationU32 as MilliSeconds;
 use aspeed_ddk::hash::{Controller, Sha384};
 use aspeed_ddk::syscon::SysCon;
 use aspeed_ddk::ecdsa::AspeedEcdsa;
+use aspeed_ddk::rsa::AspeedRsa;
 
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
+use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
 use panic_halt as _;
 
 use cortex_m_rt::entry;
@@ -142,6 +144,9 @@ fn main() -> ! {
 
     let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
     run_ecdsa_tests::<Sha384>(&mut uart_controller, &mut ecdsa);
+
+    let mut rsa = AspeedRsa::new(&secure, delay);
+    run_rsa_tests(&mut uart_controller, &mut rsa);
 
     test_wdt(&mut uart_controller);
     // Initialize the peripherals here if needed
