@@ -148,6 +148,9 @@ fn main() -> ! {
     let mut rsa = AspeedRsa::new(&secure, delay);
     run_rsa_tests(&mut uart_controller, &mut rsa);
 
+    let mut rsa = AspeedRsa::new(&secure, delay);
+    run_rsa_tests(&mut uart_controller, &mut rsa);
+
     test_wdt(&mut uart_controller);
     // Initialize the peripherals here if needed
     loop {}
