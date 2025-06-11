@@ -9,9 +9,10 @@ use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::watchdog::WdtController;
 
 use fugit::MillisDurationU32 as MilliSeconds;
-use aspeed_ddk::digest::HaceController;
+use aspeed_ddk::hash::Controller;
+use aspeed_ddk::syscon::SysCon;
 
-use aspeed_ddk::hash_test::run_hash_tests;
+use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use panic_halt as _;
 
 use cortex_m_rt::entry;
@@ -21,8 +22,8 @@ use embedded_io::Write;
 use cortex_m_rt::pre_init;
 use core::ptr::{read_volatile, write_volatile};
 
-#[cfg(test)]
-mod hash_test;
+
+
 
 #[pre_init]
 unsafe fn pre_init() {
@@ -40,7 +41,8 @@ unsafe fn pre_init() {
     write_volatile(cache_ctrl_offset as *mut u32, 1);
 }
 
-pub struct DummyDelay;
+#[derive(Default)]
+struct DummyDelay;
 
 impl DelayNs for DummyDelay {
     fn delay_ns(&mut self, _ns: u32) {
@@ -101,7 +103,7 @@ fn main() -> ! {
 
     let _peripherals = unsafe { Peripherals::steal() };
     let uart = _peripherals.uart;
-    let mut delay = DummyDelay {};
+    let mut delay = DummyDelay::default();
 
     // For jlink attach
     // set aspeed_ddk::__cortex_m_rt_main::HALT.v.value = 0 in gdb
@@ -122,7 +124,14 @@ fn main() -> ! {
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
-    let mut hace_controller = HaceController::new(hace, scu);
+
+    // Enable HACE (Hash and Crypto Engine)
+    let delay = DummyDelay::default();
+    // let scu = ast1060_pac::Scu::take().unwrap();
+    let mut syscon = SysCon::new(delay, scu);
+    syscon.enable_hace();
+
+    let mut hace_controller = Controller::new(hace);
 
     run_hash_tests(&mut uart_controller, &mut hace_controller);
 
