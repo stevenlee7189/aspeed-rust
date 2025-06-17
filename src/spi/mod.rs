@@ -109,6 +109,24 @@ pub struct SpiData {
     pub spim_proprietary_pre_config: u32,
 }
 
+impl SpiData {
+    pub const fn new() -> Self {
+        const ZERO_ADDR: SpiDecodeAddress = SpiDecodeAddress { start: 0, len: 0 };
+        const ZERO_CMD: CommandMode = CommandMode {
+            normal_read: 0,
+            normal_write: 0,
+            user: 0,
+        };
+
+        Self {
+            decode_addr: [ZERO_ADDR; ASPEED_MAX_CS],
+            cmd_mode: [ZERO_CMD; ASPEED_MAX_CS],
+            hclk: 0,
+            spim_proprietary_pre_config: 0,
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! dbg {
     ($self:expr, $($arg:tt)*) => {{
