@@ -199,7 +199,7 @@ dependencies = [
 [[package]]
 name = "proposed-traits"
 version = "0.1.0"
-source = "git+https://github.com/rusty1968/proposed_traits.git?rev=dec01ffb239d7a61875a8131992388983f7f45b3#dec01ffb239d7a61875a8131992388983f7f45b3"
+source = "git+https://github.com/rusty1968/proposed_traits.git?rev=d1e2875fa65281c4b5db1129dfd1cbe8b272d6cf#d1e2875fa65281c4b5db1129dfd1cbe8b272d6cf"
 dependencies = [
  "async-trait",
  "embedded-hal 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
