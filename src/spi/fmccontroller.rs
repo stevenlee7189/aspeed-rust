@@ -561,7 +561,7 @@ impl<'a> FmcController<'a> {
 
         #[cfg(feature = "spi_dma")]
         {
-            dbg!(self, "spi dma enabled len:{}", op_info.rx_buf.len());
+            dbg!(self, "spi dma enabled rx_len:{}", op_info.rx_buf.len());
             let addr_aligned = op_info.addr % 4 == 0;
 
             if op_info.data_direct == SPI_NOR_DATA_DIRECT_READ {
@@ -648,7 +648,12 @@ impl<'a> FmcController<'a> {
         // Enable the DMA interrupt bit (bit 3)
         self.regs.fmc008().modify(|_, w| w.dmaintenbl().set_bit());
     }
-
+    fn dbg_fmc_dma(&mut self){
+        dbg!(self, "reg 0x80: {:08x}", self.regs.fmc080().read().bits());
+        dbg!(self, "reg 0x84: {:08x}", self.regs.fmc084().read().bits());
+        dbg!(self, "reg 0x88: {:08x}", self.regs.fmc088().read().bits());
+        dbg!(self, "reg 0x8c: {:08x}", self.regs.fmc08c().read().bits());
+    }
     pub fn read_dma(&mut self, op: &mut SpiNorData) -> Result<(), &'static str> {
         let cs = self.current_cs;
         dbg!(self, "##### read dma ####");
@@ -689,7 +694,7 @@ impl<'a> FmcController<'a> {
         if self.regs.fmc080().read().bits() & SPI_DMA_REQUEST == SPI_DMA_REQUEST {
             while self.regs.fmc080().read().bits() & SPI_DMA_GRANT != SPI_DMA_GRANT {}
         }
-
+     
         let flash_start = self.spi_data.decode_addr[cs].start + op.addr - SPI_DMA_FLASH_MAP_BASE;
         dbg!(self, "flash start: 0x{:08x}", flash_start);
         // DMA flash and RAM address
@@ -706,6 +711,7 @@ impl<'a> FmcController<'a> {
 
         // Enable IRQ
         //self.dma_irq_enable();
+
         // Start DMA
         self.regs.fmc080().modify(|_, w| {
             w.dmaenbl().enable_dma_operation();
