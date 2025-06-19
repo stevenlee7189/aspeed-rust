@@ -9,9 +9,9 @@ use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::watchdog::WdtController;
 
 use fugit::MillisDurationU32 as MilliSeconds;
-use aspeed_ddk::hash::{Controller, Sha384};
+use aspeed_ddk::hash::Controller;
 use aspeed_ddk::syscon::SysCon;
-use aspeed_ddk::ecdsa::AspeedEcdsa;
+use aspeed_ddk::ecdsa::{AspeedEcdsa, Secp384r1Curve};
 
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
@@ -141,7 +141,7 @@ fn main() -> ! {
     syscon.enable_rsa_ecc();
 
     let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
-    run_ecdsa_tests::<Sha384>(&mut uart_controller, &mut ecdsa);
+    run_ecdsa_tests::<Secp384r1Curve>(&mut uart_controller, &mut ecdsa);
 
     test_wdt(&mut uart_controller);
     // Initialize the peripherals here if needed
