@@ -83,7 +83,26 @@ pub const SECP384R1_TESTVEC: &[EcdsaTestVec] = &[
 ];
 
 
-pub fn run_ecdsa_tests<C>(uart: &mut UartController, verifier: &mut impl EcdsaVerify<C, PublicKey = PublicKey, Signature = Signature>)
+pub fn run_ecdsa_tests(uart: &mut UartController, verifier: &mut impl EcdsaVerify<Secp384r1Curve, PublicKey = PublicKey, Signature = Signature>)
+{
+    writeln!(uart, "\r\nRunning ECDSA test").unwrap();
+    for (i, vec) in SECP384R1_TESTVEC.iter().enumerate() {
+        let pubkey = PublicKey { qx: Scalar48(vec.qx), qy: Scalar48(vec.qy) };
+        let sig = Signature { r: Scalar48(vec.r), s: Scalar48(vec.s) };
+        let mut digest = <<Secp384r1Curve as Curve>::DigestType as DigestAlgorithm>::DigestOutput::default();
+        digest.as_mut().copy_from_slice(&vec.m);
+
+        let result = verifier.verify(&pubkey, digest, &sig);
+
+        writeln!(uart, "\r\nTest case {}... ", i).unwrap();
+
+        let _ = match (result.is_ok(), vec.result) {
+            (true, true) => writeln!(uart, "\rresult expected (pass), Pass"),
+            (false, false) => writeln!(uart, "\rresult expected (fail), Pass"),
+            _ => writeln!(uart, "\rresult unexpected (got {:?}), Failed", result),
+        };
+    }
+}
 where
     C: Curve<Scalar = Scalar48>,
     C::DigestType: DigestAlgorithm,
