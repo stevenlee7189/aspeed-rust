@@ -231,8 +231,6 @@ impl<'a, D: DelayNs> AspeedEcdsa<'a, D> {
         let ecdsa_base = unsafe { NonNull::new_unchecked(ECDSA_BASE as *mut u32) };
         let sram_base  = unsafe { NonNull::new_unchecked(ECDSA_SRAM_BASE as *mut u32) };
 
-        // let ecdsa_base = ECDSA_BASE as *mut u32; // SBC base address
-        // let sram_base = ECDSA_SRAM_BASE as *mut u32; // SRAM base address for ECDSA
         Self { secure, ecdsa_base, sram_base, delay }
     }
 
