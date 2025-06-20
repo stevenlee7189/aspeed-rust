@@ -1,7 +1,7 @@
-use core::ptr::{read_volatile, write_volatile, write_bytes};
+use core::ptr::{NonNull, read_volatile, write_volatile, write_bytes};
 use ast1060_pac::Secure;
 use proposed_traits::common::{FromBytes, ToBytes, Endian, ErrorKind as CommonErrorKind, ErrorType as CommonErrorType, SerdeError as CommonSerdeError};
-use proposed_traits::rsa::{RsaKeys, RsaSignature, RsaKeyGen, RsaSign, RsaVerify, RsaSize, PaddingMode, Error, ErrorKind, ErrorType as RsaErrorType};
+use proposed_traits::rsa::{RsaKeys, RsaSignature, RsaMessage, RsaKeyGen, RsaSign, RsaVerify, RsaSize, PaddingMode, Error, ErrorKind, ErrorType as RsaErrorType};
 use embedded_hal::delay::DelayNs;
 
 const RSA_SRAM_BASE: usize = 0x7900_0000; // SBC base address
@@ -75,9 +75,6 @@ impl CommonErrorType for RsaDigest {
     type Error = SignatureSerdeError;
 }
 
-pub trait SerializeDeserialize: ToBytes + FromBytes {}
-impl<T: ToBytes + FromBytes> SerializeDeserialize for T {}
-
 impl ToBytes for RsaDigest {
     fn to_bytes(&self, dest: &mut [u8], _endian: Endian) -> Result<(), Self::Error> {
         if dest.len() < self.len {
@@ -110,9 +107,41 @@ impl FromBytes for RsaDigest {
     }
 }
 
+impl ToBytes for RsaSignatureData {
+    fn to_bytes(&self, dest: &mut [u8], _endian: Endian) -> Result<(), Self::Error> {
+        if dest.len() < self.len {
+            return Err(SignatureSerdeError::BufferTooSmall);
+        }
+        for i in 0..self.len {
+            dest[i] = self.data[self.len - i - 1];
+        }
+        Ok(())
+    }
+}
+
+impl FromBytes for RsaSignatureData {
+    fn from_bytes(bytes: &[u8], _endian: Endian) -> Result<Self, Self::Error> {
+        if bytes.len() > 512 {
+            return Err(SignatureSerdeError::BufferTooSmall);
+        }
+        let mut data = [0u8; 512];
+        for (i, b) in bytes.iter().rev().enumerate() {
+            data[i] = *b;
+        }
+        Ok(Self {
+            data,
+            len: bytes.len(),
+        })
+    }
+}
+
+impl CommonErrorType for RsaSignatureData {
+    type Error = SignatureSerdeError;
+}
+
 pub struct AspeedRsa<'a, D: DelayNs> {
     pub secure: &'a Secure,
-    sram_base: *mut u8,
+    sram_base: NonNull<u8>,
     delay: D,
 }
 
@@ -120,7 +149,7 @@ impl <'a, D: DelayNs> AspeedRsa<'a, D> {
     pub fn new(secure: &'a Secure, delay: D) -> Self {
         Self {
             secure,
-            sram_base: RSA_SRAM_BASE as *mut u8 ,
+            sram_base: unsafe { NonNull::new_unchecked(RSA_SRAM_BASE as *mut u8) },
             delay,
         }
     }
@@ -196,20 +225,20 @@ impl <'a, D: DelayNs> AspeedRsa<'a, D> {
 
         unsafe {
             for i in 0..SRAM_SIZE {
-                write_volatile(self.sram_base.add(i), 0);
+                write_volatile(self.sram_base.as_ptr().add(i), 0);
             }
 
             for (i, byte) in e_or_d.iter().rev().enumerate() {
                 // print byte
-                write_volatile(self.sram_base.add(SRAM_DST_EXPONENT + i), *byte);
+                write_volatile(self.sram_base.as_ptr().add(SRAM_DST_EXPONENT + i), *byte);
             }
 
             for (i, byte) in m.iter().rev().enumerate() {
-                write_volatile(self.sram_base.add(SRAM_DST_MODULUS + i), *byte);
+                write_volatile(self.sram_base.as_ptr().add(SRAM_DST_MODULUS + i), *byte);
             }
 
             for (i, byte) in input.iter().rev().enumerate() {
-                write_volatile(self.sram_base.add(SRAM_DST_DATA + i), *byte);
+                write_volatile(self.sram_base.as_ptr().add(SRAM_DST_DATA + i), *byte);
             }
 
             let key_len = (ed_bits << 16) | m_bits;
@@ -234,7 +263,7 @@ impl <'a, D: DelayNs> AspeedRsa<'a, D> {
             let mut i = 0;
 
             for j in (0..RSA_MAX_LEN).rev() {
-                let byte = read_volatile(self.sram_base.add(SRAM_DST_RESULT + j));
+                let byte = read_volatile(self.sram_base.as_ptr().add(SRAM_DST_RESULT + j));
                 if byte == 0 && leading_zero {
                     continue;
                 }
@@ -246,7 +275,7 @@ impl <'a, D: DelayNs> AspeedRsa<'a, D> {
                 out_len += 1;
             }
 
-            write_bytes(self.sram_base, 0, SRAM_SIZE);
+            write_bytes(self.sram_base.as_ptr(), 0, SRAM_SIZE);
 
             Ok(out_len)
         }
@@ -255,6 +284,10 @@ impl <'a, D: DelayNs> AspeedRsa<'a, D> {
 
 impl <D: DelayNs> RsaErrorType for AspeedRsa<'_, D> {
     type Error = RsaDriverError;
+}
+
+impl<D: DelayNs> RsaMessage for AspeedRsa<'_, D> {
+    type Message = RsaDigest;
 }
 
 impl <'a, D: DelayNs> RsaKeys for AspeedRsa<'a, D> {
@@ -274,7 +307,6 @@ impl <D: DelayNs> RsaKeyGen for AspeedRsa<'_, D>  {
 }
 
 impl <D: DelayNs> RsaSign for AspeedRsa<'_, D>  {
-    type Message = RsaDigest;
     /// Performs RSA signature generation using PKCS#1 v1.5 padding and a private key.
     ///
     /// This function pads the input message digest using PKCS#1 v1.5, triggers the RSA engine
@@ -345,8 +377,6 @@ impl <D: DelayNs> RsaSign for AspeedRsa<'_, D>  {
 }
 
 impl<D: DelayNs> RsaVerify for AspeedRsa<'_, D> {
-    type Message = RsaDigest;
-
     /// Verifies an RSA signature using the provided public key and digest.
     ///
     /// This function performs RSA public-key decryption (i.e., modular exponentiation)
