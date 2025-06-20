@@ -141,7 +141,7 @@ fn main() -> ! {
     syscon.enable_rsa_ecc();
 
     let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
-    run_ecdsa_tests::<Secp384r1Curve>(&mut uart_controller, &mut ecdsa);
+    run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
 
     test_wdt(&mut uart_controller);
     // Initialize the peripherals here if needed
