@@ -217,6 +217,11 @@ impl Error for AspeedEcdsaError {
 
 pub struct AspeedEcdsa<'a, D: DelayNs> {
     secure: &'a Secure,
+    ecdsa_base: NonNull<u32>,
+    sram_base: NonNull<u32>,
+    delay: D,
+}
+    secure: &'a Secure,
     ecdsa_base: *mut u32,
     sram_base: *mut u32,
     delay: D,
