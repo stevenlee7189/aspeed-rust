@@ -287,7 +287,75 @@ impl<'a, D: DelayNs> AspeedEcdsa<'a, D> {
     }
 }
 
-impl<C, D> EcdsaVerify<C> for AspeedEcdsa<'_, D>
+impl<D> EcdsaVerify<Secp384r1Curve> for AspeedEcdsa<'_, D>
+where
+    D: DelayNs,
+{
+    type PublicKey = PublicKey;
+    type Signature = Signature;
+
+    fn verify(
+        &mut self,
+        public_key: &Self::PublicKey,
+        digest: <<Secp384r1Curve as Curve>::DigestType as DigestAlgorithm>::DigestOutput,
+        signature: &Self::Signature,
+    ) -> Result<(), Self::Error> {
+        unsafe {
+            let digest_bytes = digest.as_ref();
+            if digest_bytes.len() != 48 {
+                return Err(AspeedEcdsaError::BadInput);
+            }
+
+            let digest_array: &[u8; 48] = digest_bytes.try_into().map_err(|_| AspeedEcdsaError::BadInput)?;
+
+            self.sec_wr(0x7c, 0x0100f00b);
+
+            // Reset Engine
+            self.secure.secure0b4().write(|w| w.bits(0));
+            self.secure.secure0b4().write(|w| w.sec_boot_ecceng_enbl().set_bit());
+            self.delay.delay_ns(5000);
+
+            self.load_secp384r1_params();
+
+            self.sec_wr(0x7c, 0x0300f00b);
+
+            // Write qx, qy, r, s
+            self.sram_wr(SRAM_DST_QX, &public_key.qx.0);
+            self.sram_wr(SRAM_DST_QY, &public_key.qy.0);
+            self.sram_wr(SRAM_DST_R, &signature.r.0);
+            self.sram_wr(SRAM_DST_S, &signature.s.0);
+            self.sram_wr(SRAM_DST_M, digest_array);
+
+            self.sec_wr(0x7c, 0);
+
+            // Write ECDSA instruction command
+            self.sram_wr_u32(0x23c0, 1);
+
+            // Trigger ECDSA Engine
+            self.secure.secure0bc().write(|w| w.sec_boot_ecceng_trigger_reg().set_bit());
+            self.delay.delay_ns(5000);
+            self.secure.secure0bc().write(|w| w.sec_boot_ecceng_trigger_reg().clear_bit());
+
+            // Poll
+            let mut retry = 1000;
+            while retry > 0 {
+                let status = self.secure.secure014().read().bits();
+                if status & (1 << 20) != 0 {
+                    return if status & (1 << 21) != 0 {
+                        Ok(())
+                    } else {
+                        Err(AspeedEcdsaError::InvalidSignature)
+                    };
+                }
+                retry -= 1;
+                self.delay.delay_ns(5000);
+            }
+
+            Err(AspeedEcdsaError::Busy)
+        }
+    }
+}
+
 where
     C: Curve<Scalar = Scalar48>,
     C::DigestType: DigestAlgorithm,
