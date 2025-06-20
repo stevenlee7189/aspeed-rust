@@ -1,5 +1,6 @@
 use crate::uart::UartController;
-use crate::hmac::{Sha256, Sha384, Sha512, Controller, IntoHashAlgo};
+use crate::controller::HaceController;
+use crate::hmac::{Sha256, Sha384, Sha512, IntoHashAlgo};
 use proposed_traits::mac::{MacInit, MacOp, MacAlgorithm};
 use embedded_io::Write;
 use core::any::TypeId;
@@ -35,7 +36,7 @@ fn print_input(uart: &mut UartController, algo: &str, input: &[u8]) {
     writeln!(uart, "]:").unwrap();
 }
 
-pub fn run_hmac_tests(uart: &mut UartController, hace: &mut Controller) {
+pub fn run_hmac_tests(uart: &mut UartController, hace: &mut HaceController) {
     let key256 = [0xb; 32];
     let key384 = [0xb; 48];
     let key512 = [0xb; 64];
@@ -49,7 +50,7 @@ pub fn run_hmac_tests(uart: &mut UartController, hace: &mut Controller) {
 
 fn run_hmac<A>(
     uart: &mut UartController,
-    ctrl: &mut Controller,
+    ctrl: &mut HaceController,
     key: &A::Key,
     input: &[u8],
 )
