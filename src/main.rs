@@ -11,7 +11,7 @@ use aspeed_ddk::watchdog::WdtController;
 use fugit::MillisDurationU32 as MilliSeconds;
 use aspeed_ddk::hash::Controller;
 use aspeed_ddk::syscon::SysCon;
-use aspeed_ddk::ecdsa::{AspeedEcdsa, Secp384r1Curve};
+use aspeed_ddk::ecdsa::{AspeedEcdsa};
 
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;

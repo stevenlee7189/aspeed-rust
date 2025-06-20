@@ -1,4 +1,4 @@
-use core::ptr::{read_volatile, write_volatile};
+use core::ptr::{NonNull, read_volatile, write_volatile};
 use ast1060_pac::Secure;
 use proposed_traits::ecdsa::{EcdsaVerify, Curve, SignatureForCurve, PubKeyForCurve, ErrorType as EcdsaErrorType, Error, ErrorKind};
 use proposed_traits::common::{FromBytes, ToBytes, Endian, ErrorKind as CommonErrorKind, ErrorType as CommonErrorType, SerdeError as CommonSerdeError};
@@ -221,11 +221,6 @@ pub struct AspeedEcdsa<'a, D: DelayNs> {
     sram_base: NonNull<u32>,
     delay: D,
 }
-    secure: &'a Secure,
-    ecdsa_base: *mut u32,
-    sram_base: *mut u32,
-    delay: D,
-}
 
 impl<D: DelayNs> EcdsaErrorType for AspeedEcdsa<'_, D> {
     type Error = AspeedEcdsaError;
@@ -233,29 +228,32 @@ impl<D: DelayNs> EcdsaErrorType for AspeedEcdsa<'_, D> {
 
 impl<'a, D: DelayNs> AspeedEcdsa<'a, D> {
     pub fn new(secure: &'a Secure, delay: D) -> Self {
-        let ecdsa_base = ECDSA_BASE as *mut u32; // SBC base address
-        let sram_base = ECDSA_SRAM_BASE as *mut u32; // SRAM base address for ECDSA
+        let ecdsa_base = unsafe { NonNull::new_unchecked(ECDSA_BASE as *mut u32) };
+        let sram_base  = unsafe { NonNull::new_unchecked(ECDSA_SRAM_BASE as *mut u32) };
+
+        // let ecdsa_base = ECDSA_BASE as *mut u32; // SBC base address
+        // let sram_base = ECDSA_SRAM_BASE as *mut u32; // SRAM base address for ECDSA
         Self { secure, ecdsa_base, sram_base, delay }
     }
 
     #[inline(always)]
     fn sec_rd(&self, offset: usize) -> u32 {
         unsafe {
-            read_volatile(self.ecdsa_base.add(offset / 4))
+            read_volatile(self.ecdsa_base.as_ptr().add(offset / 4))
         }
     }
 
     #[inline(always)]
     fn sec_wr(&self, offset: usize, val: u32) {
         unsafe {
-            write_volatile(self.ecdsa_base.add(offset / 4), val);
+            write_volatile(self.ecdsa_base.as_ptr().add(offset / 4), val);
         }
     }
 
     #[inline(always)]
     fn sram_wr_u32(&self, offset: usize, val: u32) {
         unsafe {
-            write_volatile(self.sram_base.add(offset / 4), val);
+            write_volatile(self.sram_base.as_ptr().add(offset / 4), val);
         }
     }
 
@@ -264,7 +262,7 @@ impl<'a, D: DelayNs> AspeedEcdsa<'a, D> {
         for i in (0..Scalar48::LEN).step_by(4) {
             let val = u32::from_le_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]);
             unsafe {
-                write_volatile(self.sram_base.add((offset + i) / 4), val);
+                write_volatile(self.sram_base.as_ptr().add((offset + i) / 4), val);
             }
         }
     }
@@ -312,78 +310,6 @@ where
             }
 
             let digest_array: &[u8; 48] = digest_bytes.try_into().map_err(|_| AspeedEcdsaError::BadInput)?;
-
-            self.sec_wr(0x7c, 0x0100f00b);
-
-            // Reset Engine
-            self.secure.secure0b4().write(|w| w.bits(0));
-            self.secure.secure0b4().write(|w| w.sec_boot_ecceng_enbl().set_bit());
-            self.delay.delay_ns(5000);
-
-            self.load_secp384r1_params();
-
-            self.sec_wr(0x7c, 0x0300f00b);
-
-            // Write qx, qy, r, s
-            self.sram_wr(SRAM_DST_QX, &public_key.qx.0);
-            self.sram_wr(SRAM_DST_QY, &public_key.qy.0);
-            self.sram_wr(SRAM_DST_R, &signature.r.0);
-            self.sram_wr(SRAM_DST_S, &signature.s.0);
-            self.sram_wr(SRAM_DST_M, digest_array);
-
-            self.sec_wr(0x7c, 0);
-
-            // Write ECDSA instruction command
-            self.sram_wr_u32(0x23c0, 1);
-
-            // Trigger ECDSA Engine
-            self.secure.secure0bc().write(|w| w.sec_boot_ecceng_trigger_reg().set_bit());
-            self.delay.delay_ns(5000);
-            self.secure.secure0bc().write(|w| w.sec_boot_ecceng_trigger_reg().clear_bit());
-
-            // Poll
-            let mut retry = 1000;
-            while retry > 0 {
-                let status = self.secure.secure014().read().bits();
-                if status & (1 << 20) != 0 {
-                    return if status & (1 << 21) != 0 {
-                        Ok(())
-                    } else {
-                        Err(AspeedEcdsaError::InvalidSignature)
-                    };
-                }
-                retry -= 1;
-                self.delay.delay_ns(5000);
-            }
-
-            Err(AspeedEcdsaError::Busy)
-        }
-    }
-}
-
-where
-    C: Curve<Scalar = Scalar48>,
-    C::DigestType: DigestAlgorithm,
-    <C::DigestType as DigestAlgorithm>::DigestOutput: AsRef<[u8]>,
-    D: DelayNs,
-{
-    type PublicKey = PublicKey;
-    type Signature = Signature;
-
-    fn verify(
-        &mut self,
-        public_key: &Self::PublicKey,
-        digest: <C::DigestType as DigestAlgorithm>::DigestOutput,
-        signature: &Self::Signature,
-    ) -> Result<(), Self::Error> {
-        const LEN: usize = Scalar48::LEN;
-        unsafe {
-            let digest_bytes = digest.as_ref();
-            if digest_bytes.len() != LEN {
-                return Err(AspeedEcdsaError::BadInput);
-            }
-
-            let digest_array: &[u8; LEN] = digest_bytes.try_into().map_err(|_| AspeedEcdsaError::BadInput)?;
 
             self.sec_wr(0x7c, 0x0100f00b);
 
