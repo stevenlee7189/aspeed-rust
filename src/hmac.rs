@@ -208,7 +208,7 @@ pub enum HashAlgo {
 }
 
 impl HashAlgo {
-    pub fn digest_size(&self) -> usize {
+    pub const fn digest_size(&self) -> usize {
         match self {
             HashAlgo::SHA1 => 20,
             HashAlgo::SHA224 | HashAlgo::SHA512_224 => 28,
@@ -218,7 +218,7 @@ impl HashAlgo {
         }
     }
 
-    pub fn block_size(&self) -> usize {
+    pub const fn block_size(&self) -> usize {
         match self {
             HashAlgo::SHA1 | HashAlgo::SHA224 | HashAlgo::SHA256 => 64,
             HashAlgo::SHA384 | HashAlgo::SHA512 | HashAlgo::SHA512_224 | HashAlgo::SHA512_256 => {
@@ -227,7 +227,7 @@ impl HashAlgo {
         }
     }
 
-    pub fn bitmask(&self) -> u32 {
+    pub const fn bitmask(&self) -> u32 {
         match self {
             HashAlgo::SHA1 => HACE_ALGO_SHA1,
             HashAlgo::SHA224 => HACE_ALGO_SHA224,
@@ -239,7 +239,7 @@ impl HashAlgo {
         }
     }
 
-    pub fn iv(&self) -> &'static [u32] {
+    pub const fn iv(&self) -> &'static [u32] {
         match self {
             HashAlgo::SHA1 => &SHA1_IV,
             HashAlgo::SHA224 => &SHA224_IV,
@@ -251,7 +251,7 @@ impl HashAlgo {
         }
     }
 
-    pub fn iv_size(&self) -> usize {
+    pub const fn iv_size(&self) -> usize {
         match self {
             HashAlgo::SHA1 => SHA1_IV.len(),
             HashAlgo::SHA224 => SHA224_IV.len(),
