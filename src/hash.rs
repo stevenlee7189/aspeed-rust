@@ -1,64 +1,6 @@
 use proposed_traits::digest::*;
 use core::convert::Infallible;
-use crate::hace_controller::HaceController;
-use crate::hace_controller::HashAlgo;
-
-const HACE_SG_LAST: u32 = 1 << 31;
-#[derive(Default, Copy, Clone)]
-pub struct AspeedSg {
-    pub len: u32,
-    pub addr: u32,
-}
-
-impl AspeedSg {
-    pub const fn new() -> Self {
-        Self { len: 0, addr: 0 }
-    }
-}
-
-
-#[repr(C)]
-#[repr(align(64))]
-pub struct AspeedHashContext {
-    pub sg: [AspeedSg; 2],
-    pub digest: [u8; 64],
-    pub method: u32,
-    pub block_size: u32,
-    pub digcnt: [u64; 2],
-    pub bufcnt: u32,
-    pub buffer: [u8; 256],
-    pub iv_size: u8,
-}
-
-impl Default for AspeedHashContext {
-    fn default() -> Self {
-        Self {
-            sg: [AspeedSg::default(); 2],
-            digest: [0; 64],
-            method: 0,
-            block_size: 0,
-            digcnt: [0; 2],
-            bufcnt: 0,
-            buffer: [0; 256],
-            iv_size: 0,
-        }
-    }
-}
-
-impl AspeedHashContext {
-    pub const fn new() -> Self {
-        Self {
-            sg: [AspeedSg::new(), AspeedSg::new()],
-            digest: [0; 64],
-            method: 0,
-            block_size: 0,
-            digcnt: [0; 2],
-            bufcnt: 0,
-            buffer: [0; 256],
-            iv_size: 0,
-        }
-    }
-}
+use crate::hace_controller::{HaceController, HashAlgo, HACE_SG_LAST};
 
 // DigestAlgorithm implementation for HashAlgo
 impl DigestAlgorithm for HashAlgo {

@@ -118,8 +118,9 @@ const SHA512_256_IV: [u32; 16] = [
 
 
 const HACE_SHA_BE_EN: u32 = 1 << 3;
-pub const HACE_SG_EN: u32 = 1 << 18;
 const HACE_CMD_ACC_MODE: u32 = 1 << 8;
+pub const HACE_SG_EN: u32 = 1 << 18;
+pub const HACE_SG_LAST: u32 = 1 << 31;
 
 const HACE_ALGO_SHA1: u32 = 1 << 5;
 const HACE_ALGO_SHA224: u32 = 1 << 6;
@@ -267,86 +268,6 @@ impl HashAlgo {
     pub fn hash_cmd(&self) -> u32 {
         const COMMON_FLAGS: u32 = HACE_CMD_ACC_MODE | HACE_SHA_BE_EN | HACE_SG_EN;
         COMMON_FLAGS | self.bitmask()
-    }
-}
-
-pub trait IntoHashAlgo {
-    fn to_hash_algo() -> HashAlgo;
-}
-
-pub struct Digest48(pub [u8; 48]);
-
-impl Default for Digest48 {
-    fn default() -> Self {
-        Digest48([0u8; 48])
-    }
-}
-
-impl AsRef<[u8]> for Digest48 {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for Digest48 {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-pub struct Digest64(pub [u8; 64]);
-impl Default for Digest64 {
-    fn default() -> Self {
-        Digest64([0u8; 64])
-    }
-}
-
-impl AsRef<[u8]> for Digest64 {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for Digest64 {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-
-pub struct Sha1;
-pub struct Sha224;
-pub struct Sha256;
-pub struct Sha384;
-pub struct Sha512;
-
-impl Default for Sha256 {
-    fn default() -> Self { Sha256 }
-}
-
-impl Default for Sha384 {
-    fn default() -> Self { Sha384 }
-}
-
-impl Default for Sha512 {
-    fn default() -> Self { Sha512 }
-}
-
-impl IntoHashAlgo for Sha256 {
-    fn to_hash_algo() -> HashAlgo {
-        HashAlgo::SHA256
-    }
-}
-
-impl IntoHashAlgo for Sha384 {
-    fn to_hash_algo() -> HashAlgo {
-        HashAlgo::SHA384
-    }
-}
-
-impl IntoHashAlgo for Sha512 {
-    fn to_hash_algo() -> HashAlgo {
-        HashAlgo::SHA512
     }
 }
 
