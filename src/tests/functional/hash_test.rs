@@ -1,5 +1,6 @@
 use crate::uart::UartController;
-use crate::hash::{Sha256, Sha384, Sha512, Controller, IntoHashAlgo};
+use crate::hace_controller::HaceController;
+use crate::hash::{Sha256, Sha384, Sha512, IntoHashAlgo};
 use proposed_traits::digest::{DigestInit, DigestOp, DigestAlgorithm};
 use embedded_io::Write;
 use core::any::TypeId;
@@ -35,7 +36,7 @@ fn print_input(uart: &mut UartController, algo: &str, input: &[u8]) {
     writeln!(uart, "]:").unwrap();
 }
 
-pub fn run_hash_tests(uart: &mut UartController, hace: &mut Controller) {
+pub fn run_hash_tests(uart: &mut UartController, hace: &mut HaceController) {
     let input = *b"hello_world";
 
     run_hash::<Sha256>(uart, hace, &input);
@@ -43,7 +44,7 @@ pub fn run_hash_tests(uart: &mut UartController, hace: &mut Controller) {
     run_hash::<Sha512>(uart, hace, &input);
 }
 
-fn run_hash<A>(uart: &mut UartController, ctrl: &mut Controller, input: &[u8])
+fn run_hash<A>(uart: &mut UartController, ctrl: &mut HaceController, input: &[u8])
 where
     A: DigestAlgorithm + IntoHashAlgo + Default + 'static,
     A::DigestOutput: Default + AsRef<[u8]> + AsMut<[u8]>,
