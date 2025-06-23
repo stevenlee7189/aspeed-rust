@@ -12,3 +12,4 @@ pub mod uart;
 pub mod watchdog;
 pub mod i2c;
 pub mod common;
+pub mod pinctrl;
