@@ -3,8 +3,12 @@ use crate::{common::DummyDelay, uart::UartController};
 use crate::{dbg};
 use embedded_hal::{
     delay::DelayNs,
-    spi::{ErrorKind, ErrorType, SpiBus},
+    spi::{ErrorType, SpiBus},
 };
+
+impl<'a> ErrorType for SpiController<'a> {
+    type Error = SpiError;
+}
 
 pub struct SpiController<'a> {
     regs: &'static ast1060_pac::spi::RegisterBlock,
@@ -52,8 +56,9 @@ impl<'a> SpiController<'a> {
             dbg_uart,
         }
     }
+ 
 
-    pub fn init(&mut self) -> Result<(), i32> {
+    pub fn init(&mut self) -> Result<(), SpiError> {
         dbg!(self, "SpiController: init()");
 
         for cs in 0..self.spi_config.max_cs {
@@ -65,7 +70,7 @@ impl<'a> SpiController<'a> {
             self.spi_data.cmd_mode[cs].user = ASPEED_SPI_USER;
         }
 
-        self.spi_data.hclk = get_hclock_rate()?;
+        self.spi_data.hclk = get_hclock_rate();
 
         self.decode_range_pre_init();
 
@@ -73,7 +78,7 @@ impl<'a> SpiController<'a> {
             && (self.spi_config.mux_ctrl.spim_output_base == 0
                 || !self.spi_config.mux_ctrl.spi_monitor_common_ctrl)
         {
-            return Err(-1); // replace with EINVAL
+            return Err(SpiError::Other("Invalid master idx and spim output base")); // replace with EINVAL
         }
 
         Ok(())
@@ -501,7 +506,8 @@ impl<'a> SpiController<'a> {
 
         checksum
     }
-    fn spi_nor_transceive_user(&mut self, op_info: &mut SpiNorData) {
+
+    fn spi_nor_transceive_user(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError> {
         let cs: usize = self.current_cs as usize;
         let dummy = [0u8; 12];
         let start_ptr = self.spi_data.decode_addr[cs].start as *mut u32;
@@ -582,11 +588,12 @@ impl<'a> SpiController<'a> {
                 spim_scu_ctrl_clear(self.spi_config.mux_ctrl.spi_monitor_common_ctrl, 0xf);
             }
         }
+        Ok(())
     }
 
     // Helper wrappers would be defined for spi_write_data, spi_read_data, io_mode_user, etc.
 
-    pub fn spi_nor_transceive(&mut self, op_info: &mut SpiNorData) {
+    pub fn spi_nor_transceive(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError>{
         dbg!(self, "spi_nor_transceive()...");
 
         #[cfg(feature = "spi_dma")]
@@ -610,11 +617,9 @@ impl<'a> SpiController<'a> {
                     buf_aligned
                 );
                 if use_dma {
-                    if let Err(e) = self.read_dma(op_info) {
-                        dbg!(self, "DMA read Timeout");
-                    }
+                    return self.read_dma(op_info);
                 } else {
-                    self.spi_nor_transceive_user(op_info);
+                    return self.spi_nor_transceive_user(op_info);
                 }
             } else if op_info.data_direct == SPI_NOR_DATA_DIRECT_WRITE {
                 dbg!(self, "write dma");
@@ -626,22 +631,21 @@ impl<'a> SpiController<'a> {
                         && addr_aligned
                         && buf_aligned;
                     if use_dma {
-                        if let Err(e) = self.write_dma(op_info) {
-                            dbg!(self, "DMA write Timeout");
-                        }
+                        return self.write_dma(op_info);
                     } else {
-                        self.spi_nor_transceive_user(op_info);
+                        return self.spi_nor_transceive_user(op_info);
                     }
                 } //spi dma write
                 #[cfg(not(feature = "spi_dma_write"))]
-                self.spi_nor_transceive_user(op_info);
+                    return self.spi_nor_transceive_user(op_info);
             } //write
+            Ok(())
         } // dma
 
         #[cfg(not(feature = "spi_dma"))]
         {
             dbg!(self, "no dma transceive user");
-            self.spi_nor_transceive_user(op_info);
+            return self.spi_nor_transceive_user(op_info);
         }
     }
 
@@ -653,7 +657,7 @@ impl<'a> SpiController<'a> {
             .write(|w| unsafe { w.bits(SPI_DMA_DISCARD_REQ_MAGIC) });
     }
 
-    fn wait_for_dma_completion(&mut self, timeout: u32) -> Result<(), &'static str> {
+    fn wait_for_dma_completion(&mut self, timeout: u32) -> Result<(), SpiError> {
         let mut delay = DummyDelay {};
         let mut to = timeout;
         //wait for_dma done
@@ -663,7 +667,7 @@ impl<'a> SpiController<'a> {
 
             if to == 0 {
                 self.dma_disable();
-                return Err("ERROR::SPI DMA wait timeout");
+                return Err(SpiError::DmaTimeout);
             }
         }
         self.dma_disable();
@@ -679,7 +683,7 @@ impl<'a> SpiController<'a> {
         self.regs.spi008().modify(|_, w| w.dmaintenbl().set_bit());
     }
 
-    pub fn read_dma(&mut self, op: &mut SpiNorData) -> Result<(), &'static str> {
+    pub fn read_dma(&mut self, op: &mut SpiNorData) -> Result<(), SpiError> {
         let cs = self.current_cs;
         dbg!(self, "##### read dma ####");
         dbg!(self, "device size: 0x{:08x} dv start: 0x{:08x}, read len: 0x{:08x}, rx_buf:0x{:08x} op addr: 0x{:08x}",
@@ -691,12 +695,12 @@ impl<'a> SpiController<'a> {
 
         // Length check
         if op.rx_buf.len() > self.spi_data.decode_addr[cs].len.try_into().unwrap() {
-            return Err("Invalid read length");
+            return Err(SpiError::Other("Invalid read length"));
         }
 
         // Alignment check
         if (op.addr % 4 != 0) || ((op.rx_buf.as_ptr() as u32) % 4 != 0) {
-            return Err("Address or buffer not 4-byte aligned");
+            return Err(SpiError::AddressNotAligned(op.addr));
         }
         dbg!(self, "set ctrl ");
         // Construct control value
@@ -753,15 +757,15 @@ impl<'a> SpiController<'a> {
         self.wait_for_dma_completion(SPI_DMA_TIMEOUT)
     }
 
-    fn write_dma(&mut self, op: &mut SpiNorData) -> Result<(), &'static str> {
+    fn write_dma(&mut self, op: &mut SpiNorData) -> Result<(), SpiError> {
         let cs = self.current_cs;
         dbg!(self, "##### write_dma ####");
         // Check alignment and bounds
         if op.addr % 4 != 0 || (op.tx_buf.as_ptr() as usize) % 4 != 0 {
-            return Err("Address or buffer is not 4-byte aligned");
+            return Err(SpiError::AddressNotAligned(op.addr));
         }
         if op.tx_buf.len() > self.spi_data.decode_addr[cs].len.try_into().unwrap() {
-            return Err("Write length exceeds decode region");
+            return Err(SpiError::Other("Write length exceeds decode region"));
         }
 
         // Set command register
@@ -807,25 +811,22 @@ impl<'a> SpiController<'a> {
     }
 }
 
-impl<'a> ErrorType for SpiController<'a> {
-    type Error = ErrorKind;
-}
 
 impl<'a> SpiBus<u8> for SpiController<'a> {
     // we only use mmap for all transaction
-    fn read(&mut self, mut buffer: &mut [u8]) -> Result<(), Self::Error> {
+    fn read(&mut self, mut buffer: &mut [u8]) -> Result<(), SpiError> {
         let ahb_addr = self.spi_data.decode_addr[self.current_cs].start as usize as *const u32;
         unsafe { spi_read_data(ahb_addr, &mut buffer) };
         Ok(())
     }
 
-    fn write(&mut self, buffer: &[u8]) -> Result<(), Self::Error> {
+    fn write(&mut self, buffer: &[u8]) -> Result<(), SpiError> {
         let ahb_addr = self.spi_data.decode_addr[self.current_cs].start as usize as *mut u32;
         unsafe { spi_write_data(ahb_addr, &buffer) };
         Ok(())
     }
 
-    fn transfer(&mut self, rd_buffer: &mut [u8], wr_buffer: &[u8]) -> Result<(), Self::Error> {
+    fn transfer(&mut self, rd_buffer: &mut [u8], wr_buffer: &[u8]) -> Result<(), SpiError> {
         let cs = self.current_cs;
         if !wr_buffer.is_empty() {
             let ahb_addr = self.spi_data.decode_addr[cs].start as usize as *mut u32;
@@ -840,7 +841,7 @@ impl<'a> SpiBus<u8> for SpiController<'a> {
         Ok(())
     }
 
-    fn transfer_in_place(&mut self, buffer: &mut [u8]) -> Result<(), Self::Error> {
+    fn transfer_in_place(&mut self, buffer: &mut [u8]) -> Result<(), SpiError> {
         /*let mut temp = [0u8; 2048]; //TODO:  adjust as needed
         let len = buffer.len();
         temp[..len].copy_from_slice(buffer);
@@ -849,24 +850,29 @@ impl<'a> SpiBus<u8> for SpiController<'a> {
         todo!()
     }
 
-    fn flush(&mut self) -> Result<(), Self::Error> {
+    fn flush(&mut self) -> Result<(), SpiError> {
         todo!()
     }
 }
 
 impl<'a> SpiBusWithCs for SpiController<'a> {
-    fn select_cs(&mut self, cs: usize) {
+    fn select_cs(&mut self, cs: usize) -> Result<(), SpiError>{
         let user_reg = self.spi_data.cmd_mode[cs].user;
-
+         if cs > self.spi_config.max_cs {
+            return Err(SpiError::CsSelectFailed(cs));
+        }
         self.current_cs = cs;
         cs_ctrlreg_w!(self, cs, user_reg | ASPEED_SPI_USER_INACTIVE);
         cs_ctrlreg_w!(self, cs, user_reg);
         dbg!(self, "activate cs:{}", cs as u32);
+        Ok(())
     }
 
-    fn deselect_cs(&mut self, cs: usize) {
+    fn deselect_cs(&mut self, cs: usize) -> Result<(), SpiError>{
         let user_reg = self.spi_data.cmd_mode[cs].user;
-
+         if cs > self.spi_config.max_cs {
+            return Err(SpiError::CsSelectFailed(cs));
+        }
         cs_ctrlreg_w!(self, cs, user_reg | ASPEED_SPI_USER_INACTIVE);
         cs_ctrlreg_w!(self, cs, self.spi_data.cmd_mode[cs].normal_read);
         dbg!(self, "deactivate cs:{}", cs as u32);
@@ -875,10 +881,12 @@ impl<'a> SpiBusWithCs for SpiController<'a> {
             "normal read:{:08x}",
             self.spi_data.cmd_mode[cs].normal_read
         );
+        Ok(())
     }
 
-    fn nor_transfer(&mut self, op_info: &mut SpiNorData) {
+    fn nor_transfer(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError>{
         self.spi_nor_transceive(op_info);
+        Ok(())
     }
 
     fn nor_read_init(&mut self, cs: usize, op_info: &SpiNorData) {

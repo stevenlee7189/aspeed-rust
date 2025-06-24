@@ -9,14 +9,43 @@ pub mod device;
 pub mod fmccontroller;
 pub mod norflash;
 pub mod spicontroller;
+use embedded_hal::spi::ErrorType;
+use embedded_hal::spi;
 
-pub trait SpiBusWithCs: SpiBus<u8> {
-    fn select_cs(&mut self, cs: usize);
-    fn deselect_cs(&mut self, cs: usize);
+#[derive(Debug)]
+
+pub enum SpiError {
+    BusError,
+    DmaTimeout,
+    CsSelectFailed(usize),
+    LengthMismatch,
+    AddressNotAligned(u32),
+    InvalidCommand(u8),
+    Other(&'static str),
+}
+
+/// Required by embedded-hal 1.0
+impl spi::Error for SpiError {
+    fn kind(&self) -> spi::ErrorKind {
+        match self {
+            SpiError::DmaTimeout => spi::ErrorKind::Other,
+            SpiError::LengthMismatch => spi::ErrorKind::Other,
+            SpiError::InvalidCommand(_) => spi::ErrorKind::Other,
+            SpiError::AddressNotAligned(_) => spi::ErrorKind::Other,
+            SpiError::CsSelectFailed(_) => spi::ErrorKind::Other,
+            SpiError::BusError => spi::ErrorKind::Other,
+            SpiError::Other(_) => spi::ErrorKind::Other,
+        }
+    }
+}
+
+pub trait SpiBusWithCs: SpiBus<u8, Error = SpiError>  + ErrorType<Error = SpiError>{
+    fn select_cs(&mut self, cs: usize) -> Result<(), SpiError>;
+    fn deselect_cs(&mut self, cs: usize) -> Result<(), SpiError>;
+    fn nor_transfer(&mut self, op_info: &mut SpiNorData)-> Result<(), SpiError>;
     fn nor_read_init(&mut self, cs: usize, op_info: &SpiNorData);
-    fn nor_write_init(&mut self, cs: usize, op_info: &SpiNorData);
-    fn nor_transfer(&mut self, op_info: &mut SpiNorData);
-    fn get_device_info(&mut self, cs: usize) -> (u32, u32);
+    fn nor_write_init(&mut self, cs: usize, op_info: &SpiNorData);    
+    fn get_device_info(&mut self, cs: usize) -> (u32, u32); // still infallible
 }
 
 // Constants (unchanged)
@@ -146,12 +175,12 @@ fn hclk_div_reg_to_val(x: u32) -> u32 {
     }
 }
 
-pub fn get_hclock_rate() -> Result<u32, i32> {
+pub fn get_hclock_rate() -> u32 {
     let scu_reg = unsafe { &*Scu::ptr() };
     let raw_div = scu_reg.scu314().read().hclkdivider_sel().bits();
     let clk_div = hclk_div_reg_to_val(raw_div as u32);
 
-    Ok(HPLL_FREQ / clk_div)
+    HPLL_FREQ / clk_div
 }
 
 pub fn spi_io_mode(mode: Jesd216Mode) -> u32 {
