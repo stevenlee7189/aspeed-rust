@@ -98,16 +98,20 @@ pub trait SpiNorDevice {
     fn nor_page_program(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error>;
     fn nor_read_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
     fn nor_sector_aligned(&mut self, address: u32) -> bool;
-    fn nor_wait_until_ready(&mut self) -> Result<(), Self::Error>;
+    fn nor_wait_until_ready(&mut self);
     fn nor_reset(&mut self) -> Result<(), Self::Error>;
     fn nor_reset_enable(&mut self) -> Result<(), Self::Error>;
 }
 
 macro_rules! start_transfer {
     ($this:expr, $data:expr) => {{
-        $this.bus.select_cs($this.cs);
-        $this.bus.nor_transfer($data);
-        $this.bus.deselect_cs($this.cs);
+        // The macro returns Result<(), SpiError>
+        let _ = (|| -> Result<(), SpiError> {
+            $this.bus.select_cs($this.cs)?;
+            $this.bus.nor_transfer($data)?;
+            $this.bus.deselect_cs($this.cs)?;
+            Ok(())
+        })();
     }};
 }
 
@@ -181,8 +185,10 @@ where
                 data_direct: SPI_NOR_DATA_DIRECT_WRITE,
             };
             start_transfer!(self, &mut nor_data);
+            Ok(())
+        } else {
+            Err(SpiError::AddressNotAligned(address))
         }
-        Ok(())
     }
 
     fn nor_page_program(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error> {
@@ -201,8 +207,11 @@ where
             };
             start_transfer!(self, &mut nor_data);
             self.nor_wait_until_ready();
+            Ok(())
+        } else {
+            Err(SpiError::AddressNotAligned(address))
         }
-        Ok(())
+        
     }
 
     fn nor_read_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
@@ -273,7 +282,7 @@ where
         (address & mask) == 0
     }
 
-    fn nor_wait_until_ready(&mut self) -> Result<(), Self::Error> {
+    fn nor_wait_until_ready(&mut self) {
         let mut delay = DummyDelay {};
         let mut buf: [u8; 1] = [0u8];
 
@@ -295,6 +304,5 @@ where
                 break;
             }
         }
-        Ok(())
     }
 }

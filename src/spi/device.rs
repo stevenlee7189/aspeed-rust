@@ -1,6 +1,9 @@
 use embedded_hal::spi::{ErrorType, Operation, SpiDevice};
 
+use super::SpiError;
+
 use super::SpiBusWithCs;
+
 
 #[derive(Debug)]
 pub struct ChipSelectDevice<'a, B>
@@ -11,19 +14,20 @@ where
     pub cs: usize,
 }
 
+
 impl<'a, B> ErrorType for ChipSelectDevice<'a, B>
 where
     B: SpiBusWithCs,
 {
-    type Error = B::Error;
+     type Error = SpiError;
 }
 
 impl<'a, B> SpiDevice for ChipSelectDevice<'a, B>
 where
     B: SpiBusWithCs,
 {
-    fn transaction(&mut self, operations: &mut [Operation<'_, u8>]) -> Result<(), Self::Error> {
-        self.bus.select_cs(self.cs);
+    fn transaction(&mut self, operations: &mut [Operation<'_, u8>]) -> Result<(), SpiError> {
+        self.bus.select_cs(self.cs)?;
 
         for op in operations {
             match op {
@@ -35,23 +39,23 @@ where
             };
         }
 
-        self.bus.deselect_cs(self.cs);
+        self.bus.deselect_cs(self.cs)?;
         Ok(())
     }
 
-    fn read(&mut self, buf: &mut [u8]) -> Result<(), Self::Error> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<(), SpiError> {
         self.transaction(&mut [Operation::Read(buf)])
     }
 
-    fn write(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
+    fn write(&mut self, buf: &[u8]) -> Result<(), SpiError> {
         self.transaction(&mut [Operation::Write(buf)])
     }
 
-    fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), Self::Error> {
+    fn transfer(&mut self, read: &mut [u8], write: &[u8]) -> Result<(), SpiError> {
         self.transaction(&mut [Operation::Transfer(read, write)])
     }
 
-    fn transfer_in_place(&mut self, buf: &mut [u8]) -> Result<(), Self::Error> {
+    fn transfer_in_place(&mut self, buf: &mut [u8]) -> Result<(), SpiError> {
         self.transaction(&mut [Operation::TransferInPlace(buf)])
     }
 }
