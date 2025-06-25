@@ -1,16 +1,16 @@
-use crate::{
-    spi::norflash::{Jesd216Mode, SpiNorData},
-};
-use ast1060_pac::Scu;
+use crate::{modify_reg, spi::norflash::{Jesd216Mode, SpiNorData} };
+use ast1060_pac:: Scu;
 use embedded_hal::spi::SpiBus;
 use embedded_io::Write;
-
 pub mod device;
 pub mod fmccontroller;
 pub mod norflash;
 pub mod spicontroller;
 use embedded_hal::spi::ErrorType;
 use embedded_hal::spi;
+
+#[macro_use]
+use crate::pinctrl;
 
 #[derive(Debug)]
 
@@ -44,8 +44,10 @@ pub trait SpiBusWithCs: SpiBus<u8, Error = SpiError>  + ErrorType<Error = SpiErr
     fn deselect_cs(&mut self, cs: usize) -> Result<(), SpiError>;
     fn nor_transfer(&mut self, op_info: &mut SpiNorData)-> Result<(), SpiError>;
     fn nor_read_init(&mut self, cs: usize, op_info: &SpiNorData);
-    fn nor_write_init(&mut self, cs: usize, op_info: &SpiNorData);    
-    fn get_device_info(&mut self, cs: usize) -> (u32, u32); // still infallible
+    fn nor_write_init(&mut self, cs: usize, op_info: &SpiNorData);
+
+    fn get_device_info(&mut self, cs: usize) -> (u32, u32);
+    fn get_master_id(&mut self)-> u32;
 }
 
 // Constants (unchanged)
@@ -56,7 +58,7 @@ const SPI_DMA_RAM_MAP_BASE: u32 = 0x8000_0000;
 const SPI_DMA_FLASH_MAP_BASE: u32 = 0x6000_0000;
 const SPI_CTRL_FREQ_MASK: u32 = 0x0F00_0F00;
 
-const SPI_CALIB_LEN: u32 = 0x400;
+const SPI_CALIB_LEN: usize = 0x400;
 const SPI_DMA_STS: u32 = 1 << 11;
 const SPI_DMA_IRQ_EN: u32 = 1 << 3;
 const SPI_DMA_REQUEST: u32 = 1 << 31;
@@ -106,13 +108,6 @@ pub struct SpiDecodeAddress {
     pub len: u32,
 }
 
-#[derive(Clone, Copy)]
-pub struct SpimInternalMuxControl {
-    pub master_idx: u32,
-    pub spim_output_base: u32,
-    pub spi_monitor_common_ctrl: bool,
-}
-
 //Static  spi controller configuration information
 pub struct SpiConfig {
     pub mmap_base: u32,
@@ -121,7 +116,7 @@ pub struct SpiConfig {
     pub ctrl_type: CtrlType,
     pub timing_cali_disabled: bool,
     pub timing_cali_start_off: u32,
-    pub mux_ctrl: SpimInternalMuxControl,
+    pub master_idx: u32,
     pub spim_proprietary_config_enable: bool,
     pub pure_spi_mode_only: bool,
     pub frequency: u32,
@@ -352,5 +347,109 @@ pub unsafe fn spi_write_data(ahb_addr: *mut u32, write_arr: &[u8]) {
     while i < len {
         core::ptr::write_volatile(ahb_addr_u8.add(i), write_arr[i]);
         i += 1;
+    }
+}
+pub static mut GPIO_ORI_VAL: [u32; 4] = [0; 4];
+pub fn spim_proprietary_pre_config() {
+    let scu = unsafe { &*ast1060_pac::Scu::ptr() };
+    let gpio = unsafe { &*ast1060_pac::Gpio::ptr()};
+
+    // If no SPIM in use, return
+    if scu.scu0f0().read().bits() & 0x7 == 0 {
+        return;
+    }
+
+    let spim_idx = (scu.scu0f0().read().bits() & 0x7) - 1;
+    if spim_idx > 3 {
+        return;
+    }
+    let clear = true;
+    for (idx) in 0..4 {
+       if idx as u32 != spim_idx {
+            match idx {
+                0 => {
+                    modify_reg!(scu.scu690(), 7, clear);
+                    unsafe {GPIO_ORI_VAL[idx] = gpio.gpio004().read().bits();}
+                    modify_reg!(gpio.gpio004(), 7, clear);
+                }
+                1 => {
+                    modify_reg!(scu.scu690(), 21, clear);
+                    unsafe {GPIO_ORI_VAL[idx] = gpio.gpio004().read().bits();}
+                    modify_reg!(gpio.gpio004(), 21, clear);
+                }
+                2 => {
+                    modify_reg!(scu.scu694(), 3, clear);
+                    unsafe {GPIO_ORI_VAL[idx] = gpio.gpio024().read().bits();}
+                    modify_reg!(gpio.gpio024(), 3, clear);
+                }
+                3 => {
+                    modify_reg!(scu.scu694(), 17, clear);
+                    unsafe {GPIO_ORI_VAL[idx] = gpio.gpio024().read().bits();}
+                    modify_reg!(gpio.gpio024(), 17, clear);
+                }
+                _ => (),
+            }
+        }
+    }
+}
+
+
+pub fn spim_proprietary_post_config() {
+    let scu = unsafe { &*ast1060_pac::Scu::ptr() };
+    let gpio = unsafe { &*ast1060_pac::Gpio::ptr()};
+
+    // If no SPIM in use, return
+    if scu.scu0f0().read().bits() & 0x7 == 0 {
+        return;
+    }
+
+    let spim_idx = (scu.scu0f0().read().bits() & 0x7) - 1;
+    if spim_idx > 3 {
+        return;
+    }
+    let clear = false;
+    for (idx) in 0..4 {
+       if idx as u32 != spim_idx {
+            match idx {
+                0 => {                    
+                    gpio.gpio004().modify(|r, w| unsafe {
+                        let mut current = r.bits();                       
+                        current = current & !(1 << 7);
+                        current |= GPIO_ORI_VAL[idx];
+                        w.bits(current)
+                    });
+                    modify_reg!(scu.scu690(), 7, clear);
+                }
+                1 => {
+                   gpio.gpio004().modify(|r, w| unsafe {
+                        let mut current = r.bits();               
+                        current = current & !(1 << 21);
+                        current |= GPIO_ORI_VAL[idx];
+                        w.bits(current)
+                    });
+                    modify_reg!(gpio.gpio004(), 21, clear);
+                }
+                2 => {
+                    gpio.gpio024().modify(|r, w| unsafe {
+                        let mut current = r.bits();                       
+                        current = current & !(1 << 3);
+                        current |= GPIO_ORI_VAL[idx];
+                        w.bits(current)
+                    });
+                    modify_reg!(scu.scu694(), 3, clear);
+                }
+                3 => {
+                    gpio.gpio024().modify(|r, w| unsafe {
+                        let mut current = r.bits();                       
+                        current = current & !(1 << 17);
+                        current |= GPIO_ORI_VAL[idx];
+                        w.bits(current)
+                    });
+                    modify_reg!(scu.scu694(), 17, clear);
+                    
+                }
+                _ => (),
+            }
+        }
     }
 }
