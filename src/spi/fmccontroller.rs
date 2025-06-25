@@ -73,24 +73,13 @@ impl<'a> FmcController<'a> {
 
         self.decode_range_pre_init();
 
-        if self.spi_config.mux_ctrl.master_idx != 0
-            && (self.spi_config.mux_ctrl.spim_output_base == 0
-                || !self.spi_config.mux_ctrl.spi_monitor_common_ctrl)
-        {
-            return Err(SpiError::Other("Invalid master idx and spim output base"));
-        }
-
         Ok(())
     }
     fn decode_range_pre_init(&mut self) {
         let mut max_cs = self.spi_config.max_cs;
         let mut unit_sz = ASPEED_SPI_SZ_2M;
         dbg!(self, "rang pre - init()");
-        if self.spi_config.mux_ctrl.master_idx != 0 {
-            max_cs = 1;
-            unit_sz = ASPEED_SPI_SZ_256M;
-        }
-
+       
         if self.spi_config.pure_spi_mode_only {
             unit_sz = ASPEED_SPI_SZ_256M / self.spi_config.max_cs as u32;
             unit_sz &= !(ASPEED_SPI_SZ_2M - 1);
@@ -205,10 +194,10 @@ impl<'a> FmcController<'a> {
             self,
             "spi_nor_read_init() cs:{}  master_idx: {}",
             cs,
-            self.spi_config.mux_ctrl.master_idx
+            self.spi_config.master_idx
         );
 
-        if self.spi_config.mux_ctrl.master_idx == 0 && self.spi_config.pure_spi_mode_only == false {
+        if  self.spi_config.pure_spi_mode_only == false {
             self.decode_range_reinit(op_info.data_len);
         }
         let io_mode = spi_io_mode(op_info.mode);
@@ -280,34 +269,6 @@ impl<'a> FmcController<'a> {
             dbg!(self, "Calibration already executed for cs {}", cs);
             self.apply_clock_settings(cs, max_freq);
             return;
-        }
-
-        // Skip if mux master_idx != 0 and cs != 0 (as per original logic)
-        if self.spi_config.mux_ctrl.master_idx != 0 && cs != 0 {
-            self.apply_clock_settings(cs, max_freq);
-            return;
-        }
-
-        // SPI Monitor MUX config (conditional)
-        #[cfg(feature = "spi_monitor")]
-        {
-            if self.spi_config.mux_ctrl.master_idx != 0 {
-                // Setup monitor mux here - you will need to define spim_scu_ctrl_set
-                spim_scu_ctrl_set(
-                    self.spi_config.mux_ctrl.spi_monitor_common_ctrl,
-                    1 << 3,
-                    (self.spi_config.mux_ctrl.master_idx - 1) << 3,
-                );
-                spim_scu_ctrl_set(
-                    self.spi_config.mux_ctrl.spi_monitor_common_ctrl,
-                    0x7,
-                    self.spi_config.mux_ctrl.spim_output_base + cs as u32,
-                );
-            }
-
-            if let Some(pre_config) = &self.spi_data.aspeed_spim_proprietary_pre_config {
-                pre_config();
-            }
         }
 
         // Read ctrl register to clear frequency bits
@@ -401,16 +362,6 @@ impl<'a> FmcController<'a> {
 
         // Apply clock division and set SPI clock frequency
         self.apply_clock_settings(cs, freq_to_use);
-
-        #[cfg(feature = "spi_monitor")]
-        {
-            if let Some(post_config) = &self.spi_data.aspeed_spim_proprietary_post_config {
-                post_config();
-            }
-            if self.spi_config.mux_ctrl.master_idx != 0 {
-                spim_scu_ctrl_clear(self.spi_config.mux_ctrl.spi_monitor_common_ctrl, 0xf);
-            }
-        }
     }
 
     fn apply_clock_settings(&mut self, cs: usize, max_freq: u32) {
@@ -456,7 +407,7 @@ impl<'a> FmcController<'a> {
         // Set DMA length
         self.regs
             .fmc08c()
-            .write(|w| unsafe { w.bits(SPI_CALIB_LEN) });
+            .write(|w| unsafe { w.bits(SPI_CALIB_LEN as u32) });
         // Configure DMA control register
         let ctrl_val = SPI_DMA_ENABLE
             | SPI_DMA_CALC_CKSUM
@@ -486,29 +437,7 @@ impl<'a> FmcController<'a> {
             self.spi_data.decode_addr[cs].start
         );
 
-        // Handle SPI monitor setup (if enabled)
-        #[cfg(feature = "spi_monitor")]
-        {
-            if config.mux_ctrl.master_idx != 0 {
-                cs = 0;
-                spim_scu_ctrl_set(
-                    config.mux_ctrl.spi_monitor_common_ctrl,
-                    1 << 3,
-                    (config.mux_ctrl.master_idx - 1) << 3,
-                );
-                spim_scu_ctrl_set(
-                    config.mux_ctrl.spi_monitor_common_ctrl,
-                    0x7,
-                    config.mux_ctrl.spim_output_base + ctx.config.slave,
-                );
-            }
-
-            if let Some(pre_config) = &data.aspeed_spim_proprietary_pre_config {
-                pre_config();
-            }
-        }
-
-        // Send command
+         // Send command
         let cmd_mode = self.spi_data.cmd_mode[cs].user
             | super::spi_io_mode_user(super::get_cmd_buswidth(op_info.mode as u32) as u32);
         cs_ctrlreg_w!(self, cs, cmd_mode);
@@ -546,22 +475,12 @@ impl<'a> FmcController<'a> {
         } else {
             unsafe { spi_write_data(start_ptr, op_info.tx_buf) };
         }
-
-        #[cfg(feature = "spi_monitor")]
-        {
-            if let Some(post_config) = &self.spi_data.aspeed_spim_proprietary_post_config {
-                post_config();
-            }
-            if self.spi_config.mux_ctrl.master_idx != 0 {
-                spim_scu_ctrl_clear(self.spi_config.mux_ctrl.spi_monitor_common_ctrl, 0xf);
-            }
-        }
         Ok(())
     }
 
     // Helper wrappers would be defined for spi_write_data, spi_read_data, io_mode_user, etc.
 
-    pub fn spi_nor_transceive(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError> {
+    pub fn spi_nor_transceive(&mut self, op_info: &mut SpiNorData)-> Result<(), SpiError> {
         dbg!(self, "spi_nor_transceive()...");
 
         #[cfg(feature = "spi_dma")]
@@ -862,5 +781,9 @@ impl<'a> SpiBusWithCs for FmcController<'a> {
             self.spi_data.decode_addr[cs].len,
             self.spi_config.write_block_size,
         )
+    }
+
+    fn get_master_id(&mut self) -> u32 {
+        self.spi_config.master_idx
     }
 }

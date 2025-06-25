@@ -2,6 +2,7 @@ use super::device::ChipSelectDevice;
 use super::SpiBusWithCs;
 use super::*;
 use crate::common::DummyDelay;
+use crate::spimonitor::SpipfInstance;
 use embedded_hal::delay::DelayNs;
 
 /* Flash opcodes */
@@ -96,7 +97,9 @@ pub trait SpiNorDevice {
     fn nor_read_jedec_id(&mut self) -> Result<[u8; 3], Self::Error>;
     fn nor_sector_erase(&mut self, address: u32) -> Result<(), Self::Error>;
     fn nor_page_program(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error>;
+    fn nor_page_program_4b(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error>;
     fn nor_read_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
+    fn nor_read_fast_4b_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error>;    
     fn nor_sector_aligned(&mut self, address: u32) -> bool;
     fn nor_wait_until_ready(&mut self);
     fn nor_reset(&mut self) -> Result<(), Self::Error>;
@@ -105,19 +108,36 @@ pub trait SpiNorDevice {
 
 macro_rules! start_transfer {
     ($this:expr, $data:expr) => {{
-        // The macro returns Result<(), SpiError>
-        let _ = (|| -> Result<(), SpiError> {
-            $this.bus.select_cs($this.cs)?;
-            $this.bus.nor_transfer($data)?;
-            $this.bus.deselect_cs($this.cs)?;
-            Ok(())
+ 	let _ = (|| -> Result<(), SpiError> {
+        $this.bus.select_cs($this.cs)?;
+        // SPIM config
+        if let Some(spim) = $this.spi_monitor.as_mut() {
+            if $this.bus.get_master_id() != 0 {
+                spim.spim_scu_ctrl_set(0x8, 0x8);
+                spim.spim_scu_ctrl_set(0x7, 1 + SPIPF::FILTER_ID as u32 );
+            }
+            super::spim_proprietary_pre_config();
+        }
+
+        $this.bus.nor_transfer($data)?;
+        $this.bus.deselect_cs($this.cs)?;
+        //SPIM deconfig
+        super::spim_proprietary_post_config();
+        if let Some(spim) = $this.spi_monitor.as_mut() {
+            if $this.bus.get_master_id() != 0 {
+                spim.spim_scu_ctrl_clear(0xf);
+            }
+        }
+	    Ok(())	
         })();
     }};
 }
 
-impl<'a, B> SpiNorDevice for ChipSelectDevice<'a, B>
+//TODO: add 4byte address mode support
+impl<'a, B, SPIPF> SpiNorDevice for ChipSelectDevice<'a, B, SPIPF>
 where
     B: SpiBusWithCs,
+    SPIPF: SpipfInstance,
 {
     type Error = B::Error;
 
@@ -185,7 +205,8 @@ where
                 data_direct: SPI_NOR_DATA_DIRECT_WRITE,
             };
             start_transfer!(self, &mut nor_data);
-            Ok(())
+            self.nor_wait_until_ready();
+       	    Ok(())
         } else {
             Err(SpiError::AddressNotAligned(address))
         }
@@ -211,7 +232,26 @@ where
         } else {
             Err(SpiError::AddressNotAligned(address))
         }
-        
+    }
+
+    fn nor_page_program_4b(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error> {
+        self.nor_write_enable()?;
+        if self.nor_sector_aligned(address) == true {
+            let mut nor_data = SpiNorData {
+                mode: Jesd216Mode::Mode111,
+                opcode: norflash::SPI_NOR_CMD_PP_4B,
+                dummy_cycle: 0,
+                addr: address,
+                addr_len: 4,
+                data_len: data.len() as u32,
+                tx_buf: data,
+                rx_buf: &mut [],
+                data_direct: SPI_NOR_DATA_DIRECT_WRITE,
+            };
+            start_transfer!(self, &mut nor_data);
+            self.nor_wait_until_ready();
+        }
+        Ok(())
     }
 
     fn nor_read_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
@@ -221,6 +261,23 @@ where
             dummy_cycle: 8,
             addr: address,
             addr_len: 3,
+            data_len: buf.len() as u32, // it is not in used.
+            tx_buf: &[],
+            rx_buf: buf,
+            data_direct: SPI_NOR_DATA_DIRECT_READ,
+        };
+        start_transfer!(self, &mut nor_data);
+
+        Ok(())
+    }
+
+    fn nor_read_fast_4b_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
+        let mut nor_data = SpiNorData {
+            mode: Jesd216Mode::Mode111Fast,
+            opcode: SPI_NOR_CMD_READ_FAST_4B,
+            dummy_cycle: 8,
+            addr: address,
+            addr_len: 4,
             data_len: buf.len() as u32, // it is not in used.
             tx_buf: &[],
             rx_buf: buf,
@@ -266,7 +323,22 @@ where
     }
 
     fn nor_read_init(&mut self, nor_data: &SpiNorData) -> Result<(), Self::Error> {
+         if let Some(spim) = self.spi_monitor.as_mut() {
+            if self.bus.get_master_id() != 0 {
+                spim.spim_scu_ctrl_set(0x8, 0x8);
+                spim.spim_scu_ctrl_set(0x7, 1 + SPIPF::FILTER_ID as u32 );
+            }
+            super::spim_proprietary_pre_config();
+        } 
+
         self.bus.nor_read_init(self.cs, &nor_data);
+
+        super::spim_proprietary_post_config();
+        if let Some(spim) = self.spi_monitor.as_mut() {
+            if self.bus.get_master_id() != 0 {
+                spim.spim_scu_ctrl_clear(0xf);
+            }
+        }
         Ok(())
     }
 
@@ -281,7 +353,20 @@ where
         let mask = (1 << bits) - 1;
         (address & mask) == 0
     }
-
+    /**
+     * @brief Wait until the flash is ready
+     *
+     * @note The device must be externally acquired before invoking this
+     * function.
+     *
+     * This function should be invoked after every ERASE, PROGRAM, or
+     * WRITE_STATUS operation before continuing.  This allows us to assume
+     * that the device is ready to accept new commands at any other point
+     * in the code.
+     *
+     * @param dev The device structure
+     * @return 0 on success, negative errno code otherwise
+     */
     fn nor_wait_until_ready(&mut self) {
         let mut delay = DummyDelay {};
         let mut buf: [u8; 1] = [0u8];
