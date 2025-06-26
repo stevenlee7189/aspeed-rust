@@ -1,6 +1,6 @@
 use super::*;
+use crate::dbg;
 use crate::{common::DummyDelay, spi::norflash::SpiNorData, uart::UartController};
-use crate::{dbg};
 use embedded_hal::{
     delay::DelayNs,
     spi::{ErrorType, SpiBus},
@@ -79,7 +79,7 @@ impl<'a> FmcController<'a> {
         let mut max_cs = self.spi_config.max_cs;
         let mut unit_sz = ASPEED_SPI_SZ_2M;
         dbg!(self, "rang pre - init()");
-       
+
         if self.spi_config.pure_spi_mode_only {
             unit_sz = ASPEED_SPI_SZ_256M / self.spi_config.max_cs as u32;
             unit_sz &= !(ASPEED_SPI_SZ_2M - 1);
@@ -197,7 +197,7 @@ impl<'a> FmcController<'a> {
             self.spi_config.master_idx
         );
 
-        if  self.spi_config.pure_spi_mode_only == false {
+        if self.spi_config.pure_spi_mode_only == false {
             self.decode_range_reinit(op_info.data_len);
         }
         let io_mode = spi_io_mode(op_info.mode);
@@ -437,7 +437,7 @@ impl<'a> FmcController<'a> {
             self.spi_data.decode_addr[cs].start
         );
 
-         // Send command
+        // Send command
         let cmd_mode = self.spi_data.cmd_mode[cs].user
             | super::spi_io_mode_user(super::get_cmd_buswidth(op_info.mode as u32) as u32);
         cs_ctrlreg_w!(self, cs, cmd_mode);
@@ -480,7 +480,7 @@ impl<'a> FmcController<'a> {
 
     // Helper wrappers would be defined for spi_write_data, spi_read_data, io_mode_user, etc.
 
-    pub fn spi_nor_transceive(&mut self, op_info: &mut SpiNorData)-> Result<(), SpiError> {
+    pub fn spi_nor_transceive(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError> {
         dbg!(self, "spi_nor_transceive()...");
 
         #[cfg(feature = "spi_dma")]
@@ -524,7 +524,7 @@ impl<'a> FmcController<'a> {
                     }
                 } //spi dma write
                 #[cfg(not(feature = "spi_dma_write"))]
-                    return self.spi_nor_transceive_user(op_info);
+                return self.spi_nor_transceive_user(op_info);
             } //write
             Ok(())
         } // dma
@@ -569,7 +569,7 @@ impl<'a> FmcController<'a> {
         // Enable the DMA interrupt bit (bit 3)
         self.regs.fmc008().modify(|_, w| w.dmaintenbl().set_bit());
     }
-    fn dbg_fmc_dma(&mut self){
+    fn dbg_fmc_dma(&mut self) {
         dbg!(self, "reg 0x80: {:08x}", self.regs.fmc080().read().bits());
         dbg!(self, "reg 0x84: {:08x}", self.regs.fmc084().read().bits());
         dbg!(self, "reg 0x88: {:08x}", self.regs.fmc088().read().bits());
@@ -615,7 +615,7 @@ impl<'a> FmcController<'a> {
         if self.regs.fmc080().read().bits() & SPI_DMA_REQUEST == SPI_DMA_REQUEST {
             while self.regs.fmc080().read().bits() & SPI_DMA_GRANT != SPI_DMA_GRANT {}
         }
-     
+
         let flash_start = self.spi_data.decode_addr[cs].start + op.addr - SPI_DMA_FLASH_MAP_BASE;
         dbg!(self, "flash start: 0x{:08x}", flash_start);
         // DMA flash and RAM address
@@ -736,7 +736,7 @@ impl<'a> SpiBus<u8> for FmcController<'a> {
 }
 
 impl<'a> SpiBusWithCs for FmcController<'a> {
-    fn select_cs(&mut self, cs: usize) -> Result<(), SpiError>{
+    fn select_cs(&mut self, cs: usize) -> Result<(), SpiError> {
         let user_reg = self.spi_data.cmd_mode[cs].user;
         if cs > self.spi_config.max_cs {
             return Err(SpiError::CsSelectFailed(cs));
@@ -748,9 +748,9 @@ impl<'a> SpiBusWithCs for FmcController<'a> {
         Ok(())
     }
 
-    fn deselect_cs(&mut self, cs: usize) -> Result<(), SpiError>{
+    fn deselect_cs(&mut self, cs: usize) -> Result<(), SpiError> {
         let user_reg = self.spi_data.cmd_mode[cs].user;
-         if cs > self.spi_config.max_cs {
+        if cs > self.spi_config.max_cs {
             return Err(SpiError::CsSelectFailed(cs));
         }
         cs_ctrlreg_w!(self, cs, user_reg | ASPEED_SPI_USER_INACTIVE);

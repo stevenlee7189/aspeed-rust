@@ -1,7 +1,7 @@
-use embedded_hal::spi::{ErrorType, Operation, SpiDevice};
-use crate::spimonitor::{SpiMonitor, SpipfInstance};
-use super::SpiError;
 use super::SpiBusWithCs;
+use super::SpiError;
+use crate::spimonitor::{SpiMonitor, SpipfInstance};
+use embedded_hal::spi::{ErrorType, Operation, SpiDevice};
 
 #[derive(Debug)]
 pub struct ChipSelectDevice<'a, B, SPIPF>
@@ -13,7 +13,6 @@ where
     pub cs: usize,
     pub spi_monitor: Option<&'a mut SpiMonitor<SPIPF>>,
 }
-
 
 impl<'a, B, SPIPF> ErrorType for ChipSelectDevice<'a, B, SPIPF>
 where
@@ -30,13 +29,13 @@ where
 {
     fn transaction(&mut self, operations: &mut [Operation<'_, u8>]) -> Result<(), SpiError> {
         self.bus.select_cs(self.cs)?;
-         if let Some(spim) = self.spi_monitor.as_mut() {
+        if let Some(spim) = self.spi_monitor.as_mut() {
             if self.bus.get_master_id() != 0 {
                 spim.spim_scu_ctrl_set(0x8, 0x8);
-                spim.spim_scu_ctrl_set(0x7, 1 + SPIPF::FILTER_ID as u32 );
+                spim.spim_scu_ctrl_set(0x7, 1 + SPIPF::FILTER_ID as u32);
             }
             super::spim_proprietary_pre_config();
-        } 
+        }
 
         for op in operations {
             match op {
@@ -47,7 +46,7 @@ where
                 Operation::DelayNs(_) => todo!(),
             };
         }
-      
+
         super::spim_proprietary_post_config();
         if let Some(spim) = self.spi_monitor.as_mut() {
             if self.bus.get_master_id() != 0 {

@@ -1,13 +1,19 @@
-use crate::{modify_reg, spi::norflash::{Jesd216Mode, SpiNorData} };
-use ast1060_pac:: Scu;
+use crate::{
+    modify_reg,
+    spi::norflash::{Jesd216Mode, SpiNorData},
+};
+use ast1060_pac::Scu;
+use embedded_hal::spi;
+use embedded_hal::spi::ErrorType;
 use embedded_hal::spi::SpiBus;
 use embedded_io::Write;
+
 pub mod device;
 pub mod fmccontroller;
 pub mod norflash;
+pub mod norflashblockdevice;
 pub mod spicontroller;
-use embedded_hal::spi::ErrorType;
-use embedded_hal::spi;
+pub mod spitest;
 
 #[macro_use]
 use crate::pinctrl;
@@ -19,6 +25,8 @@ pub enum SpiError {
     DmaTimeout,
     CsSelectFailed(usize),
     LengthMismatch,
+    CapacityOutOfRange,
+    UnsupportedDevice(u8),
     AddressNotAligned(u32),
     InvalidCommand(u8),
     Other(&'static str),
@@ -28,26 +36,28 @@ pub enum SpiError {
 impl spi::Error for SpiError {
     fn kind(&self) -> spi::ErrorKind {
         match self {
+            SpiError::BusError => spi::ErrorKind::Other,
             SpiError::DmaTimeout => spi::ErrorKind::Other,
+            SpiError::CsSelectFailed(_) => spi::ErrorKind::Other,
             SpiError::LengthMismatch => spi::ErrorKind::Other,
+            SpiError::CapacityOutOfRange => spi::ErrorKind::Other,
+            SpiError::UnsupportedDevice(_) => spi::ErrorKind::Other,
             SpiError::InvalidCommand(_) => spi::ErrorKind::Other,
             SpiError::AddressNotAligned(_) => spi::ErrorKind::Other,
-            SpiError::CsSelectFailed(_) => spi::ErrorKind::Other,
-            SpiError::BusError => spi::ErrorKind::Other,
             SpiError::Other(_) => spi::ErrorKind::Other,
         }
     }
 }
 
-pub trait SpiBusWithCs: SpiBus<u8, Error = SpiError>  + ErrorType<Error = SpiError>{
+pub trait SpiBusWithCs: SpiBus<u8, Error = SpiError> + ErrorType<Error = SpiError> {
     fn select_cs(&mut self, cs: usize) -> Result<(), SpiError>;
     fn deselect_cs(&mut self, cs: usize) -> Result<(), SpiError>;
-    fn nor_transfer(&mut self, op_info: &mut SpiNorData)-> Result<(), SpiError>;
+    fn nor_transfer(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError>;
     fn nor_read_init(&mut self, cs: usize, op_info: &SpiNorData);
     fn nor_write_init(&mut self, cs: usize, op_info: &SpiNorData);
 
     fn get_device_info(&mut self, cs: usize) -> (u32, u32);
-    fn get_master_id(&mut self)-> u32;
+    fn get_master_id(&mut self) -> u32;
 }
 
 // Constants (unchanged)
@@ -352,7 +362,7 @@ pub unsafe fn spi_write_data(ahb_addr: *mut u32, write_arr: &[u8]) {
 pub static mut GPIO_ORI_VAL: [u32; 4] = [0; 4];
 pub fn spim_proprietary_pre_config() {
     let scu = unsafe { &*ast1060_pac::Scu::ptr() };
-    let gpio = unsafe { &*ast1060_pac::Gpio::ptr()};
+    let gpio = unsafe { &*ast1060_pac::Gpio::ptr() };
 
     // If no SPIM in use, return
     if scu.scu0f0().read().bits() & 0x7 == 0 {
@@ -365,26 +375,34 @@ pub fn spim_proprietary_pre_config() {
     }
     let clear = true;
     for (idx) in 0..4 {
-       if idx as u32 != spim_idx {
+        if idx as u32 != spim_idx {
             match idx {
                 0 => {
                     modify_reg!(scu.scu690(), 7, clear);
-                    unsafe {GPIO_ORI_VAL[idx] = gpio.gpio004().read().bits();}
+                    unsafe {
+                        GPIO_ORI_VAL[idx] = gpio.gpio004().read().bits();
+                    }
                     modify_reg!(gpio.gpio004(), 7, clear);
                 }
                 1 => {
                     modify_reg!(scu.scu690(), 21, clear);
-                    unsafe {GPIO_ORI_VAL[idx] = gpio.gpio004().read().bits();}
+                    unsafe {
+                        GPIO_ORI_VAL[idx] = gpio.gpio004().read().bits();
+                    }
                     modify_reg!(gpio.gpio004(), 21, clear);
                 }
                 2 => {
                     modify_reg!(scu.scu694(), 3, clear);
-                    unsafe {GPIO_ORI_VAL[idx] = gpio.gpio024().read().bits();}
+                    unsafe {
+                        GPIO_ORI_VAL[idx] = gpio.gpio024().read().bits();
+                    }
                     modify_reg!(gpio.gpio024(), 3, clear);
                 }
                 3 => {
                     modify_reg!(scu.scu694(), 17, clear);
-                    unsafe {GPIO_ORI_VAL[idx] = gpio.gpio024().read().bits();}
+                    unsafe {
+                        GPIO_ORI_VAL[idx] = gpio.gpio024().read().bits();
+                    }
                     modify_reg!(gpio.gpio024(), 17, clear);
                 }
                 _ => (),
@@ -393,10 +411,9 @@ pub fn spim_proprietary_pre_config() {
     }
 }
 
-
 pub fn spim_proprietary_post_config() {
     let scu = unsafe { &*ast1060_pac::Scu::ptr() };
-    let gpio = unsafe { &*ast1060_pac::Gpio::ptr()};
+    let gpio = unsafe { &*ast1060_pac::Gpio::ptr() };
 
     // If no SPIM in use, return
     if scu.scu0f0().read().bits() & 0x7 == 0 {
@@ -409,11 +426,11 @@ pub fn spim_proprietary_post_config() {
     }
     let clear = false;
     for (idx) in 0..4 {
-       if idx as u32 != spim_idx {
+        if idx as u32 != spim_idx {
             match idx {
-                0 => {                    
+                0 => {
                     gpio.gpio004().modify(|r, w| unsafe {
-                        let mut current = r.bits();                       
+                        let mut current = r.bits();
                         current = current & !(1 << 7);
                         current |= GPIO_ORI_VAL[idx];
                         w.bits(current)
@@ -421,8 +438,8 @@ pub fn spim_proprietary_post_config() {
                     modify_reg!(scu.scu690(), 7, clear);
                 }
                 1 => {
-                   gpio.gpio004().modify(|r, w| unsafe {
-                        let mut current = r.bits();               
+                    gpio.gpio004().modify(|r, w| unsafe {
+                        let mut current = r.bits();
                         current = current & !(1 << 21);
                         current |= GPIO_ORI_VAL[idx];
                         w.bits(current)
@@ -431,7 +448,7 @@ pub fn spim_proprietary_post_config() {
                 }
                 2 => {
                     gpio.gpio024().modify(|r, w| unsafe {
-                        let mut current = r.bits();                       
+                        let mut current = r.bits();
                         current = current & !(1 << 3);
                         current |= GPIO_ORI_VAL[idx];
                         w.bits(current)
@@ -440,13 +457,12 @@ pub fn spim_proprietary_post_config() {
                 }
                 3 => {
                     gpio.gpio024().modify(|r, w| unsafe {
-                        let mut current = r.bits();                       
+                        let mut current = r.bits();
                         current = current & !(1 << 17);
                         current |= GPIO_ORI_VAL[idx];
                         w.bits(current)
                     });
                     modify_reg!(scu.scu694(), 17, clear);
-                    
                 }
                 _ => (),
             }
