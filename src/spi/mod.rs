@@ -14,8 +14,6 @@ pub mod norflash;
 pub mod norflashblockdevice;
 pub mod spicontroller;
 
-#[macro_use]
-use crate::pinctrl;
 
 #[derive(Debug)]
 
@@ -140,6 +138,12 @@ pub struct SpiData {
     pub cmd_mode: [CommandMode; ASPEED_MAX_CS],
     pub hclk: u32,
     pub spim_proprietary_pre_config: u32,
+}
+
+impl Default for SpiData {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SpiData {
@@ -373,7 +377,7 @@ pub fn spim_proprietary_pre_config() {
         return;
     }
     let clear = true;
-    for (idx) in 0..4 {
+    for idx in 0..4 {
         if idx as u32 != spim_idx {
             match idx {
                 0 => {
@@ -424,13 +428,13 @@ pub fn spim_proprietary_post_config() {
         return;
     }
     let clear = false;
-    for (idx) in 0..4 {
+    for idx in 0..4 {
         if idx as u32 != spim_idx {
             match idx {
                 0 => {
                     gpio.gpio004().modify(|r, w| unsafe {
                         let mut current = r.bits();
-                        current = current & !(1 << 7);
+                        current &= !(1 << 7);
                         current |= GPIO_ORI_VAL[idx];
                         w.bits(current)
                     });
@@ -439,7 +443,7 @@ pub fn spim_proprietary_post_config() {
                 1 => {
                     gpio.gpio004().modify(|r, w| unsafe {
                         let mut current = r.bits();
-                        current = current & !(1 << 21);
+                        current &= !(1 << 21);
                         current |= GPIO_ORI_VAL[idx];
                         w.bits(current)
                     });
@@ -448,7 +452,7 @@ pub fn spim_proprietary_post_config() {
                 2 => {
                     gpio.gpio024().modify(|r, w| unsafe {
                         let mut current = r.bits();
-                        current = current & !(1 << 3);
+                        current &= !(1 << 3);
                         current |= GPIO_ORI_VAL[idx];
                         w.bits(current)
                     });
@@ -457,7 +461,7 @@ pub fn spim_proprietary_post_config() {
                 3 => {
                     gpio.gpio024().modify(|r, w| unsafe {
                         let mut current = r.bits();
-                        current = current & !(1 << 17);
+                        current &= !(1 << 17);
                         current |= GPIO_ORI_VAL[idx];
                         w.bits(current)
                     });

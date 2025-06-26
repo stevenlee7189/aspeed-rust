@@ -1,5 +1,4 @@
-use ast1060_pac::generic::Reg;
-use ast1060_pac::{Scu, Spipf, Spipf1, Spipf2, Spipf3};
+use ast1060_pac::Scu;
 use core::cmp::min;
 use core::fmt;
 use core::marker::PhantomData;
@@ -21,7 +20,7 @@ pub trait SpipfInstance {
     const FILTER_ID: SpiMonitorNum;
 }
 
-macro_rules!  macro_spif {
+macro_rules! macro_spif {
     ($Spipfx: ident, $x: path) => {
         impl SpipfInstance for ast1060_pac::$Spipfx {
             fn ptr() -> *const ast1060_pac::spipf::RegisterBlock {
@@ -35,7 +34,6 @@ macro_spif!(Spipf, SpiMonitorNum::SPIM0);
 macro_spif!(Spipf1, SpiMonitorNum::SPIM1);
 macro_spif!(Spipf2, SpiMonitorNum::SPIM2);
 macro_spif!(Spipf3, SpiMonitorNum::SPIM3);
-
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -563,9 +561,9 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
     pub fn spim_passthrough_mode_set(&mut self, mode: SpimPassthroughMode) {
         match mode {
             SpimPassthroughMode::SinglePassthrough => {
-                self.spi_monitor.spipf000().modify(|_, w| {
-                    w.enbl_single_bit_passthrough().bit(true)
-                });
+                self.spi_monitor
+                    .spipf000()
+                    .modify(|_, w| w.enbl_single_bit_passthrough().bit(true));
             }
             SpimPassthroughMode::MultiPassthrough => {
                 self.spi_monitor.spipf000().modify(|_, w| {
@@ -642,7 +640,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
     //Block Mode: Block a command by one extra CLK
     //Block a command by deasserting CS early
     pub fn spim_block_mode_config(&mut self, block_mode: SpimBlockMode) {
-        if (block_mode == SpimBlockMode::SpimBlockExtraClk) {
+        if block_mode == SpimBlockMode::SpimBlockExtraClk {
             self.spi_monitor
                 .spipf000()
                 .modify(|_, w| w.block_mode().bit(true));
@@ -766,7 +764,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
                     .write(|w| unsafe { w.bits(reg_val) });
                 Ok(index)
             }
-            Err(_) => return Err(SpiMonitorError::NoAllowCmdSlotAvail(cmd as u32)),
+            Err(_) => Err(SpiMonitorError::NoAllowCmdSlotAvail(cmd as u32)),
         }
     }
     //  If the command already exists in allow command table and
@@ -810,7 +808,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
             }
         } //end while
           //Try adding the new command
-        return self.spim_add_new_command(cmd, flag);
+        self.spim_add_new_command(cmd, flag)
     }
     //All command table slots where command is equal to "cmd", valid and not locked
     //will be removed
@@ -822,7 +820,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         while offset < SPIM_CMD_TABLE_NUM as u32 {
             match self.spim_get_allow_cmd_slot(cmd, offset) {
                 Ok(index) => {
-                    let mut reg_val = self.spi_monitor.spipfwt(index as usize).read().bits();
+                    let reg_val = self.spi_monitor.spipfwt(index as usize).read().bits();
 
                     //Slot is not locked
                     if reg_val & SPIM_CMD_TABLE_LOCK_MASK == 0 {
@@ -842,9 +840,9 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
             }
         }
         if count == 0 {
-            return Err(SpiMonitorError::CommandNotFound(cmd));
+            Err(SpiMonitorError::CommandNotFound(cmd))
         } else {
-            return Ok(count as u32);
+            Ok(count)
         }
     }
 
@@ -889,9 +887,9 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
             }
         }
         if count == 0 {
-            return Err(SpiMonitorError::CommandNotFound(cmd));
+            Err(SpiMonitorError::CommandNotFound(cmd))
         } else {
-            return Ok(count);
+            Ok(count)
         }
     }
     pub fn spim_is_pri_regs_locked(&mut self, rw_select: AddrPrivRWSel) -> bool {
@@ -933,7 +931,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         let mut aligned_addr = addr;
         //start address alignment, protect more
         if (addr % ACCESS_BLOCK_UNIT) != 0 {
-            adjusted_len += (addr % ACCESS_BLOCK_UNIT);
+            adjusted_len += addr % ACCESS_BLOCK_UNIT;
             aligned_addr = (addr / ACCESS_BLOCK_UNIT) * ACCESS_BLOCK_UNIT;
         }
         //make len 16KB aligment
@@ -975,7 +973,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
 
         self.spim_addr_priv_access_enable(rw_select);
 
-        while (total_bit_num > 0) {
+        while total_bit_num > 0 {
             //reset after incrementing to 32
             if bit_off > 31 {
                 bit_off = 0;
@@ -1100,26 +1098,20 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         );
 
         for iter in 0..self.read_blocked_region_num {
-            match self.spim_address_privilege_config(
+            if let Ok(num_blocks) = self.spim_address_privilege_config(
                 AddrPrivRWSel::AddrPrivReadSel,
                 AddrPriOp::FlagAddrPrivDisable,
                 self.read_blocked_regions[iter as usize].start,
                 self.read_blocked_regions[iter as usize].length,
-            ) {
-                Ok(num_blocks) => {}
-                Err(_) => {}
-            }
+            ) {}
         }
         for iter in 0..self.write_blocked_region_num {
-            match self.spim_address_privilege_config(
+            if let Ok(num_blocks) = self.spim_address_privilege_config(
                 AddrPrivRWSel::AddrPrivWriteSel,
                 AddrPriOp::FlagAddrPrivDisable,
                 self.write_blocked_regions[iter as usize].start,
                 self.write_blocked_regions[iter as usize].length,
-            ) {
-                Ok(num_blocks) => {}
-                Err(_) => {}
-            }
+            ) {}
         }
     }
     //Enable/disable SPI monitor from SCU
@@ -1313,7 +1305,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         self.scu.scu4b0().write(|w| unsafe { w.bits(reg_val) });
         //Set SCU690[31:28]
         reg_val = self.scu.scu690().read().bits();
-        reg_val |= (0xF << 28);
+        reg_val |= 0xF << 28;
         self.scu.scu690().write(|w| unsafe { w.bits(reg_val) });
         //Set SCU694[9:0]
         reg_val = self.scu.scu694().read().bits();
@@ -1356,7 +1348,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         }
     }
     pub fn aspeed_spi_monitor_init(&mut self) {
-        let allow_cmd_list = self.allow_cmd_list.clone();
+        let allow_cmd_list = self.allow_cmd_list;
         let allow_cmd_num = self.allow_cmd_num;
 
         // always enable internal passthrough configuration

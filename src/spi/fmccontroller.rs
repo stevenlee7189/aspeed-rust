@@ -76,7 +76,7 @@ impl<'a> FmcController<'a> {
         Ok(())
     }
     fn decode_range_pre_init(&mut self) {
-        let mut max_cs = self.spi_config.max_cs;
+        let max_cs = self.spi_config.max_cs;
         let mut unit_sz = ASPEED_SPI_SZ_2M;
         dbg!(self, "rang pre - init()");
 
@@ -131,7 +131,7 @@ impl<'a> FmcController<'a> {
         let mut total_decode_range = 0;
         let mut pre_end_addr = 0;
         dbg!(self, "rang reinit() flash size: {}", flash_sz);
-        for cs in 0..self.spi_config.max_cs as usize {
+        for cs in 0..self.spi_config.max_cs {
             let tmp = if cs == 0 {
                 self.regs.fmc030().read().bits()
             } else if cs == 1 {
@@ -159,7 +159,7 @@ impl<'a> FmcController<'a> {
         }
 
         // 3. Apply new decode config
-        for cs in 0..self.spi_config.max_cs as usize {
+        for cs in 0..self.spi_config.max_cs {
             if decode_sz_arr[cs] == 0 {
                 continue;
             }
@@ -197,7 +197,7 @@ impl<'a> FmcController<'a> {
             self.spi_config.master_idx
         );
 
-        if self.spi_config.pure_spi_mode_only == false {
+        if !self.spi_config.pure_spi_mode_only {
             self.decode_range_reinit(op_info.data_len);
         }
         let io_mode = spi_io_mode(op_info.mode);
@@ -205,7 +205,7 @@ impl<'a> FmcController<'a> {
             get_addr_buswidth(op_info.mode as u32) as u32,
             op_info.dummy_cycle,
         );
-        let read_cmd = (io_mode | (((op_info.opcode as u32) & 0xff) << 16) | (dummy as u32))
+        let read_cmd = (io_mode | ((op_info.opcode & 0xff) << 16) | (dummy as u32))
             | ASPEED_SPI_NORMAL_READ;
         self.spi_data.cmd_mode[cs].normal_read = read_cmd;
         dbg!(
@@ -244,7 +244,7 @@ impl<'a> FmcController<'a> {
         let io_mode = spi_io_mode(op_info.mode);
         let dummy = 0;
         let write_cmd =
-            (io_mode | (((op_info.opcode as u32) & 0xff) << 16) | dummy) | ASPEED_SPI_NORMAL_WRITE;
+            (io_mode | ((op_info.opcode & 0xff) << 16) | dummy) | ASPEED_SPI_NORMAL_WRITE;
         self.spi_data.cmd_mode[cs].normal_write = write_cmd;
     }
 
@@ -391,7 +391,7 @@ impl<'a> FmcController<'a> {
         let data = &self.spi_data;
         let config = &self.spi_config;
 
-        let cs = self.current_cs as usize;
+        let cs = self.current_cs;
         // Request DMA access
 
         self.regs
@@ -402,7 +402,7 @@ impl<'a> FmcController<'a> {
         }
 
         // Set DMA flash start address
-        let flash_addr = data.decode_addr[cs as usize].start + config.timing_calibration_start_off;
+        let flash_addr = data.decode_addr[cs].start + config.timing_calibration_start_off;
         self.regs.fmc084().write(|w| unsafe { w.bits(flash_addr) });
         // Set DMA length
         self.regs
@@ -427,7 +427,7 @@ impl<'a> FmcController<'a> {
         checksum
     }
     fn spi_nor_transceive_user(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError> {
-        let cs: usize = self.current_cs as usize;
+        let cs: usize = self.current_cs;
         let dummy = [0u8; 12];
         let start_ptr = self.spi_data.decode_addr[cs].start as *mut u32;
         dbg!(
@@ -532,7 +532,7 @@ impl<'a> FmcController<'a> {
         #[cfg(not(feature = "spi_dma"))]
         {
             dbg!(self, "no dma transceive user");
-            return self.spi_nor_transceive_user(op_info);
+            self.spi_nor_transceive_user(op_info)
         }
     }
 
@@ -548,7 +548,7 @@ impl<'a> FmcController<'a> {
         let mut delay = DummyDelay {};
         let mut to = timeout;
         //wait for_dma done
-        while self.regs.fmc008().read().dmastatus().is_dma_finish() == false {
+        while !self.regs.fmc008().read().dmastatus().is_dma_finish() {
             delay.delay_ns(500);
             to -= 1;
 
@@ -597,7 +597,7 @@ impl<'a> FmcController<'a> {
         // Construct control value
         let mut ctrl = self.spi_data.cmd_mode[cs].normal_read & SPI_CTRL_FREQ_MASK;
         ctrl |= spi_io_mode(op.mode);
-        ctrl |= (op.opcode as u32) << 16;
+        ctrl |= op.opcode << 16;
 
         // Calculate dummy cycle bits
         let bus_width = get_addr_buswidth(op.mode as u32);
@@ -659,7 +659,7 @@ impl<'a> FmcController<'a> {
         let mut ctrl_reg = self.spi_data.cmd_mode[cs].normal_write & SPI_CTRL_FREQ_MASK;
         let bus_width = get_addr_buswidth(op.mode as u32);
         ctrl_reg |= spi_io_mode(op.mode); // you must implement this
-        ctrl_reg |= (op.opcode as u32) << 16;
+        ctrl_reg |= op.opcode << 16;
         ctrl_reg |= (op.dummy_cycle / (8 / bus_width) as u32) << 6;
         ctrl_reg |= ASPEED_SPI_NORMAL_WRITE;
 
@@ -699,15 +699,15 @@ impl<'a> FmcController<'a> {
 
 impl<'a> SpiBus<u8> for FmcController<'a> {
     // we only use mmap for all transaction
-    fn read(&mut self, mut buffer: &mut [u8]) -> Result<(), SpiError> {
+    fn read(&mut self, buffer: &mut [u8]) -> Result<(), SpiError> {
         let ahb_addr = self.spi_data.decode_addr[self.current_cs].start as usize as *const u32;
-        unsafe { spi_read_data(ahb_addr, &mut buffer) };
+        unsafe { spi_read_data(ahb_addr, buffer) };
         Ok(())
     }
 
     fn write(&mut self, buffer: &[u8]) -> Result<(), SpiError> {
         let ahb_addr = self.spi_data.decode_addr[self.current_cs].start as usize as *mut u32;
-        unsafe { spi_write_data(ahb_addr, &buffer) };
+        unsafe { spi_write_data(ahb_addr, buffer) };
         Ok(())
     }
 
@@ -715,7 +715,7 @@ impl<'a> SpiBus<u8> for FmcController<'a> {
         let cs = self.current_cs;
         if !wr_buffer.is_empty() {
             let ahb_addr = self.spi_data.decode_addr[cs].start as usize as *mut u32;
-            unsafe { spi_write_data(ahb_addr, &wr_buffer) };
+            unsafe { spi_write_data(ahb_addr, wr_buffer) };
         }
         cortex_m::asm::delay(2);
         if !rd_buffer.is_empty() {

@@ -203,7 +203,7 @@ where
 
     fn nor_sector_erase(&mut self, address: u32) -> Result<(), Self::Error> {
         self.nor_write_enable()?;
-        if self.nor_sector_aligned(address) == true {
+        if self.nor_sector_aligned(address) {
             let mut nor_data = SpiNorData {
                 mode: Jesd216Mode::Mode111,
                 opcode: norflash::SPI_NOR_CMD_SE,
@@ -336,7 +336,7 @@ where
             super::spim_proprietary_pre_config();
         }
 
-        self.bus.nor_read_init(self.cs, &nor_data);
+        self.bus.nor_read_init(self.cs, nor_data);
 
         super::spim_proprietary_post_config();
         if let Some(spim) = self.spi_monitor.as_mut() {
@@ -348,7 +348,7 @@ where
     }
 
     fn nor_write_init(&mut self, nor_data: &SpiNorData) -> Result<(), Self::Error> {
-        self.bus.nor_write_init(self.cs, &nor_data);
+        self.bus.nor_write_init(self.cs, nor_data);
         Ok(())
     }
 

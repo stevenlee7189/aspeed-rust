@@ -7,7 +7,7 @@ use core::fmt::Debug;
 use embedded_hal::delay::DelayNs;
 use proposed_traits::block_device as BD;
 use proposed_traits::block_device::{
-    BlockAddress, BlockDevice, BlockRange, Error, ErrorKind, ErrorType,
+    BlockAddress, BlockDevice, BlockRange, ErrorType,
 };
 
 /// Adapter that wraps a SpiNorDevice and implements BlockDevice
@@ -49,7 +49,7 @@ where
 impl<T: SpiNorDevice> NorFlashBlockDevice<T> {
     pub fn from_jedec_id(device: T, jedec_id: [u8; 3]) -> Result<Self, SpiError> {
         let capacity_code = jedec_id[2];
-        if capacity_code < 0x10 || capacity_code > 0x28 {
+        if !(0x10..=0x28).contains(&capacity_code) {
             return Err(SpiError::CapacityOutOfRange);
         }
 
@@ -98,7 +98,7 @@ where
     /// A result indicating success or failure.
     fn read(&mut self, address: Self::Address, data: &mut [u8]) -> Result<(), Self::Error> {
         let addr = address.0;
-        let end = (addr as usize) + data.len();
+        let end = addr + data.len();
 
         if end > self.capacity() {
             return Err(BlockError::OutOfBounds);
@@ -110,10 +110,8 @@ where
             {
                 return Err(BlockError::ReadError);
             }
-        } else {
-            if let Err(e) = self.device.nor_read_data(addr.try_into().unwrap(), data) {
-                return Err(BlockError::ReadError);
-            }
+        } else if let Err(e) = self.device.nor_read_data(addr.try_into().unwrap(), data) {
+            return Err(BlockError::ReadError);
         }
 
         Ok(())
