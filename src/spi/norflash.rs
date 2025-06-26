@@ -56,6 +56,17 @@ pub const SPI_NOR_CMD_RDSFDP: u32 = 0x5A; /* Read SFDP */
 pub const SPI_NOR_WIP_BIT: u32 = 0x1; /* Write in progress */
 pub const SPI_NOR_WEL_BIT: u32 = 0x2; /* Write enable latch */
 
+pub const SPI_NOR_MFR_ID_WINBOND: u8 = 0xEF;
+pub const SPI_NOR_MFR_ID_MXIC: u8 = 0xC2;
+pub const SPI_NOR_MFR_ID_ST: u8 = 0x20;
+pub const SPI_NOR_MFR_ID_MICRON: u8 = 0x2C;
+pub const SPI_NOR_MFR_ID_ISSI: u8 = 0x9D;
+pub const SPI_NOR_MFR_ID_GIGADEVICE: u8 = 0xC8;
+pub const SPI_NOR_MFR_ID_CYPRESS: u8 = 0x34;
+
+pub const SPI_NOR_PAGE_SIZE: usize = 256;
+pub const SPI_NOR_SECTOR_SIZE: usize = 4096;
+
 #[derive(Clone, Copy)]
 pub enum Jesd216Mode {
     Mode044 = 0x00000044, /* implied instruction, execute in place */
@@ -99,7 +110,7 @@ pub trait SpiNorDevice {
     fn nor_page_program(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error>;
     fn nor_page_program_4b(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error>;
     fn nor_read_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
-    fn nor_read_fast_4b_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error>;    
+    fn nor_read_fast_4b_data(&mut self, address: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
     fn nor_sector_aligned(&mut self, address: u32) -> bool;
     fn nor_wait_until_ready(&mut self);
     fn nor_reset(&mut self) -> Result<(), Self::Error>;
@@ -108,27 +119,27 @@ pub trait SpiNorDevice {
 
 macro_rules! start_transfer {
     ($this:expr, $data:expr) => {{
- 	let _ = (|| -> Result<(), SpiError> {
-        $this.bus.select_cs($this.cs)?;
-        // SPIM config
-        if let Some(spim) = $this.spi_monitor.as_mut() {
-            if $this.bus.get_master_id() != 0 {
-                spim.spim_scu_ctrl_set(0x8, 0x8);
-                spim.spim_scu_ctrl_set(0x7, 1 + SPIPF::FILTER_ID as u32 );
+        let _ = (|| -> Result<(), SpiError> {
+            $this.bus.select_cs($this.cs)?;
+            // SPIM config
+            if let Some(spim) = $this.spi_monitor.as_mut() {
+                if $this.bus.get_master_id() != 0 {
+                    spim.spim_scu_ctrl_set(0x8, 0x8);
+                    spim.spim_scu_ctrl_set(0x7, 1 + SPIPF::FILTER_ID as u32);
+                }
+                super::spim_proprietary_pre_config();
             }
-            super::spim_proprietary_pre_config();
-        }
 
-        $this.bus.nor_transfer($data)?;
-        $this.bus.deselect_cs($this.cs)?;
-        //SPIM deconfig
-        super::spim_proprietary_post_config();
-        if let Some(spim) = $this.spi_monitor.as_mut() {
-            if $this.bus.get_master_id() != 0 {
-                spim.spim_scu_ctrl_clear(0xf);
+            $this.bus.nor_transfer($data)?;
+            $this.bus.deselect_cs($this.cs)?;
+            //SPIM deconfig
+            super::spim_proprietary_post_config();
+            if let Some(spim) = $this.spi_monitor.as_mut() {
+                if $this.bus.get_master_id() != 0 {
+                    spim.spim_scu_ctrl_clear(0xf);
+                }
             }
-        }
-	    Ok(())	
+            Ok(())
         })();
     }};
 }
@@ -206,7 +217,7 @@ where
             };
             start_transfer!(self, &mut nor_data);
             self.nor_wait_until_ready();
-       	    Ok(())
+            Ok(())
         } else {
             Err(SpiError::AddressNotAligned(address))
         }
@@ -214,43 +225,37 @@ where
 
     fn nor_page_program(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error> {
         self.nor_write_enable()?;
-        if self.nor_sector_aligned(address) == true {
-            let mut nor_data = SpiNorData {
-                mode: Jesd216Mode::Mode111,
-                opcode: norflash::SPI_NOR_CMD_PP,
-                dummy_cycle: 0,
-                addr: address,
-                addr_len: 3,
-                data_len: data.len() as u32,
-                tx_buf: data,
-                rx_buf: &mut [],
-                data_direct: SPI_NOR_DATA_DIRECT_WRITE,
-            };
-            start_transfer!(self, &mut nor_data);
-            self.nor_wait_until_ready();
-            Ok(())
-        } else {
-            Err(SpiError::AddressNotAligned(address))
-        }
+        let mut nor_data = SpiNorData {
+            mode: Jesd216Mode::Mode111,
+            opcode: norflash::SPI_NOR_CMD_PP,
+            dummy_cycle: 0,
+            addr: address,
+            addr_len: 3,
+            data_len: data.len() as u32,
+            tx_buf: data,
+            rx_buf: &mut [],
+            data_direct: SPI_NOR_DATA_DIRECT_WRITE,
+        };
+        start_transfer!(self, &mut nor_data);
+        self.nor_wait_until_ready();
+        Ok(())
     }
 
     fn nor_page_program_4b(&mut self, address: u32, data: &[u8]) -> Result<(), Self::Error> {
         self.nor_write_enable()?;
-        if self.nor_sector_aligned(address) == true {
-            let mut nor_data = SpiNorData {
-                mode: Jesd216Mode::Mode111,
-                opcode: norflash::SPI_NOR_CMD_PP_4B,
-                dummy_cycle: 0,
-                addr: address,
-                addr_len: 4,
-                data_len: data.len() as u32,
-                tx_buf: data,
-                rx_buf: &mut [],
-                data_direct: SPI_NOR_DATA_DIRECT_WRITE,
-            };
-            start_transfer!(self, &mut nor_data);
-            self.nor_wait_until_ready();
-        }
+        let mut nor_data = SpiNorData {
+            mode: Jesd216Mode::Mode111,
+            opcode: norflash::SPI_NOR_CMD_PP_4B,
+            dummy_cycle: 0,
+            addr: address,
+            addr_len: 4,
+            data_len: data.len() as u32,
+            tx_buf: data,
+            rx_buf: &mut [],
+            data_direct: SPI_NOR_DATA_DIRECT_WRITE,
+        };
+        start_transfer!(self, &mut nor_data);
+        self.nor_wait_until_ready();
         Ok(())
     }
 
@@ -323,13 +328,13 @@ where
     }
 
     fn nor_read_init(&mut self, nor_data: &SpiNorData) -> Result<(), Self::Error> {
-         if let Some(spim) = self.spi_monitor.as_mut() {
+        if let Some(spim) = self.spi_monitor.as_mut() {
             if self.bus.get_master_id() != 0 {
                 spim.spim_scu_ctrl_set(0x8, 0x8);
-                spim.spim_scu_ctrl_set(0x7, 1 + SPIPF::FILTER_ID as u32 );
+                spim.spim_scu_ctrl_set(0x7, 1 + SPIPF::FILTER_ID as u32);
             }
             super::spim_proprietary_pre_config();
-        } 
+        }
 
         self.bus.nor_read_init(self.cs, &nor_data);
 
