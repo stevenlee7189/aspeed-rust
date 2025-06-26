@@ -13,7 +13,6 @@ pub mod fmccontroller;
 pub mod norflash;
 pub mod norflashblockdevice;
 pub mod spicontroller;
-pub mod spitest;
 
 #[macro_use]
 use crate::pinctrl;
