@@ -1,11 +1,10 @@
 use ast1060_pac::Hace;
+use core::convert::Infallible;
 use proposed_traits::digest::ErrorType as DigestErrorType;
 use proposed_traits::mac::ErrorType as MacErrorType;
-use core::convert::Infallible;
 
 #[link_section = ".ram_nc"]
 static mut HMAC_CTX: AspeedHashContext = AspeedHashContext::new();
-
 
 const SHA1_IV: [u32; 8] = [
     0x0123_4567,
@@ -116,7 +115,6 @@ const SHA512_256_IV: [u32; 16] = [
     0xA22C_C581,
 ];
 
-
 const HACE_SHA_BE_EN: u32 = 1 << 3;
 const HACE_CMD_ACC_MODE: u32 = 1 << 8;
 pub const HACE_SG_EN: u32 = 1 << 18;
@@ -141,7 +139,6 @@ impl AspeedSg {
         Self { len: 0, addr: 0 }
     }
 }
-
 
 #[repr(C)]
 #[repr(align(64))]
@@ -287,8 +284,7 @@ impl<'ctrl> HaceController<'ctrl> {
     }
 }
 
-
-impl <'a> DigestErrorType for HaceController<'_> {
+impl<'a> DigestErrorType for HaceController<'_> {
     type Error = Infallible;
 }
 
@@ -348,11 +344,10 @@ impl HaceController<'_> {
         self.copy_iv_to_digest();
         self.fill_padding(0);
         let bufcnt = self.ctx_mut().bufcnt;
-        self.start_hash_operation(bufcnt as u32);
+        self.start_hash_operation(bufcnt);
 
-        let slice = unsafe {
-            core::slice::from_raw_parts(self.ctx_mut().digest.as_ptr(), digest_len)
-        };
+        let slice =
+            unsafe { core::slice::from_raw_parts(self.ctx_mut().digest.as_ptr(), digest_len) };
 
         self.ctx_mut().key[..digest_len].copy_from_slice(slice);
         self.ctx_mut().ipad[..digest_len].copy_from_slice(slice);
@@ -372,12 +367,10 @@ impl HaceController<'_> {
             } else {
                 64 + 56 - index
             }
+        } else if index < 112 {
+            112 - index
         } else {
-            if index < 112 {
-                112 - index
-            } else {
-                128 + 112 - index
-            }
+            128 + 112 - index
         };
 
         ctx.buffer[bufcnt] = 0x80;

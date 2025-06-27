@@ -1,6 +1,6 @@
-use proposed_traits::mac::*;
-use core::convert::Infallible;
 use crate::hace_controller::{HaceController, HashAlgo, HACE_SG_EN};
+use core::convert::Infallible;
+use proposed_traits::mac::*;
 
 // MacAlgorithm implementation for HashAlgo
 impl MacAlgorithm for HashAlgo {
@@ -52,7 +52,6 @@ impl AsMut<[u8]> for Digest64 {
     }
 }
 
-
 pub struct Sha1;
 pub struct Sha224;
 pub struct Sha256;
@@ -90,15 +89,21 @@ impl MacAlgorithm for Sha512 {
 }
 
 impl Default for Sha256 {
-    fn default() -> Self { Sha256 }
+    fn default() -> Self {
+        Sha256
+    }
 }
 
 impl Default for Sha384 {
-    fn default() -> Self { Sha384 }
+    fn default() -> Self {
+        Sha384
+    }
 }
 
 impl Default for Sha512 {
-    fn default() -> Self { Sha512 }
+    fn default() -> Self {
+        Sha512
+    }
 }
 
 impl IntoHashAlgo for Sha256 {
@@ -125,7 +130,10 @@ where
     A::MacOutput: Default + AsMut<[u8]>,
     A::Key: AsRef<[u8]>,
 {
-    type OpContext<'a> = OpContextImpl<'a, 'ctrl, A> where Self: 'a; // Define your OpContext type here
+    type OpContext<'a>
+        = OpContextImpl<'a, 'ctrl, A>
+    where
+        Self: 'a; // Define your OpContext type here
 
     fn init<'a>(&'a mut self, _algo: A, key: &A::Key) -> Result<Self::OpContext<'a>, Self::Error> {
         self.algo = A::to_hash_algo();
@@ -167,17 +175,17 @@ pub struct OpContextImpl<'a, 'ctrl, A: MacAlgorithm + IntoHashAlgo> {
     _phantom: core::marker::PhantomData<A>,
 }
 
-impl<'a, 'ctrl, A> ErrorType for OpContextImpl<'a, 'ctrl, A>
+impl<A> ErrorType for OpContextImpl<'_, '_, A>
 where
     A: MacAlgorithm + IntoHashAlgo,
 {
     type Error = Infallible;
 }
 
-impl<'a, 'ctrl, A> MacOp for OpContextImpl<'a, 'ctrl, A>
+impl<A> MacOp for OpContextImpl<'_, '_, A>
 where
     A: MacAlgorithm + IntoHashAlgo,
-    A::MacOutput: Default + AsMut<[u8]>
+    A::MacOutput: Default + AsMut<[u8]>,
 {
     type Output = A::MacOutput;
 
@@ -206,9 +214,8 @@ where
         bufcnt = ctrl.ctx_mut().bufcnt;
         ctrl.copy_iv_to_digest();
         ctrl.start_hash_operation(bufcnt);
-        let slice = unsafe {
-            core::slice::from_raw_parts(ctrl.ctx_mut().digest.as_ptr(), digest_size)
-        };
+        let slice =
+            unsafe { core::slice::from_raw_parts(ctrl.ctx_mut().digest.as_ptr(), digest_size) };
 
         // H(opad + H(opad + hash sum))
         {
@@ -216,8 +223,7 @@ where
             ctx.digcnt[0] = block_size as u64 + digest_size as u64;
             ctx.bufcnt = block_size as u32 + digest_size as u32;
             ctx.buffer[..block_size].copy_from_slice(&ctx.opad[..block_size]);
-            ctx.buffer[block_size..(block_size + digest_size)]
-                .copy_from_slice(slice);
+            ctx.buffer[block_size..(block_size + digest_size)].copy_from_slice(slice);
         }
         ctrl.fill_padding(0);
         bufcnt = ctrl.ctx_mut().bufcnt;
@@ -231,10 +237,7 @@ where
         let digest_size = self.controller.algo.digest_size();
         let ctx = self.controller.ctx_mut();
 
-
-        let slice = unsafe {
-            core::slice::from_raw_parts(ctx.digest.as_ptr(), digest_size)
-        };
+        let slice = unsafe { core::slice::from_raw_parts(ctx.digest.as_ptr(), digest_size) };
 
         let mut output = A::MacOutput::default();
         output.as_mut()[..digest_size].copy_from_slice(slice);

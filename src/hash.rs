@@ -1,6 +1,6 @@
-use proposed_traits::digest::*;
-use core::convert::Infallible;
 use crate::hace_controller::{HaceController, HashAlgo, HACE_SG_LAST};
+use core::convert::Infallible;
+use proposed_traits::digest::*;
 
 // DigestAlgorithm implementation for HashAlgo
 impl DigestAlgorithm for HashAlgo {
@@ -83,17 +83,22 @@ impl DigestAlgorithm for Sha512 {
 }
 
 impl Default for Sha256 {
-    fn default() -> Self { Sha256 }
+    fn default() -> Self {
+        Sha256
+    }
 }
 
 impl Default for Sha384 {
-    fn default() -> Self { Sha384 }
+    fn default() -> Self {
+        Sha384
+    }
 }
 
 impl Default for Sha512 {
-    fn default() -> Self { Sha512 }
+    fn default() -> Self {
+        Sha512
+    }
 }
-
 
 impl IntoHashAlgo for Sha256 {
     fn to_hash_algo() -> HashAlgo {
@@ -118,16 +123,18 @@ where
     A: DigestAlgorithm + IntoHashAlgo,
     A::DigestOutput: Default + AsMut<[u8]>,
 {
-    type OpContext<'a> = OpContextImpl<'a, 'ctrl, A> where Self: 'a; // Define your OpContext type here
+    type OpContext<'a>
+        = OpContextImpl<'a, 'ctrl, A>
+    where
+        Self: 'a; // Define your OpContext type here
 
-    fn init<'a>(&'a mut self, _algo: A) -> Result<Self::OpContext<'a>, Self::Error> {
+    fn init(&mut self, _algo: A) -> Result<Self::OpContext<'_>, Self::Error> {
         self.algo = A::to_hash_algo();
         self.ctx_mut().method = self.algo.hash_cmd();
         self.copy_iv_to_digest();
         self.ctx_mut().block_size = self.algo.block_size() as u32;
         self.ctx_mut().bufcnt = 0;
         self.ctx_mut().digcnt = [0; 2];
-
 
         Ok(OpContextImpl {
             controller: self,
@@ -141,23 +148,24 @@ pub struct OpContextImpl<'a, 'ctrl, A: DigestAlgorithm + IntoHashAlgo> {
     _phantom: core::marker::PhantomData<A>,
 }
 
-impl<'a, 'ctrl, A> proposed_traits::digest::ErrorType for OpContextImpl<'a, 'ctrl, A>
+impl<A> proposed_traits::digest::ErrorType for OpContextImpl<'_, '_, A>
 where
     A: DigestAlgorithm + IntoHashAlgo,
 {
     type Error = Infallible;
 }
 
-impl<'a, 'ctrl, A> DigestOp for OpContextImpl<'a, 'ctrl, A>
+impl<A> DigestOp for OpContextImpl<'_, '_, A>
 where
     A: DigestAlgorithm + IntoHashAlgo,
-    A::DigestOutput: Default + AsMut<[u8]>
+    A::DigestOutput: Default + AsMut<[u8]>,
 {
     type Output = A::DigestOutput;
 
     fn update(&mut self, _input: &[u8]) -> Result<(), Self::Error> {
         let input_len = _input.len() as u32;
-        let (new_len, carry) = self.controller.ctx_mut().digcnt[0].overflowing_add(input_len as u64);
+        let (new_len, carry) =
+            self.controller.ctx_mut().digcnt[0].overflowing_add(input_len as u64);
 
         self.controller.ctx_mut().digcnt[0] = new_len;
         if carry {
@@ -172,7 +180,8 @@ where
             return Ok(());
         }
 
-        let remaining = (input_len + self.controller.ctx_mut().bufcnt) % self.controller.ctx_mut().block_size;
+        let remaining =
+            (input_len + self.controller.ctx_mut().bufcnt) % self.controller.ctx_mut().block_size;
         let total_len = (input_len + self.controller.ctx_mut().bufcnt) - remaining;
         let mut i = 0;
 
@@ -188,7 +197,8 @@ where
 
         if total_len != self.controller.ctx_mut().bufcnt {
             self.controller.ctx_mut().sg[i].addr = _input.as_ptr() as u32;
-            self.controller.ctx_mut().sg[i].len = (total_len - self.controller.ctx_mut().bufcnt) | HACE_SG_LAST;
+            self.controller.ctx_mut().sg[i].len =
+                (total_len - self.controller.ctx_mut().bufcnt) | HACE_SG_LAST;
         }
 
         self.controller.start_hash_operation(total_len);
@@ -199,11 +209,10 @@ where
 
             self.controller.ctx_mut().buffer[..(remaining as usize)]
                 .copy_from_slice(&_input[src_start..src_end]);
-            self.controller.ctx_mut().bufcnt = remaining as u32;
+            self.controller.ctx_mut().bufcnt = remaining;
         }
         Ok(())
     }
-
 
     fn finalize(self) -> Result<Self::Output, Self::Error> {
         self.controller.fill_padding(0);
@@ -220,12 +229,10 @@ where
 
         self.controller.start_hash_operation(bufcnt);
 
-    let slice = unsafe {
-        core::slice::from_raw_parts(digest_ptr, digest_len)
-    };
+        let slice = unsafe { core::slice::from_raw_parts(digest_ptr, digest_len) };
 
-    let mut output = A::DigestOutput::default();
-    output.as_mut()[..digest_len].copy_from_slice(slice);
+        let mut output = A::DigestOutput::default();
+        output.as_mut()[..digest_len].copy_from_slice(slice);
 
         let ctx = self.controller.ctx_mut();
         ctx.bufcnt = 0;
