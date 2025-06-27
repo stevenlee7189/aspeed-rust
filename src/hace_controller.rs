@@ -284,11 +284,11 @@ impl<'ctrl> HaceController<'ctrl> {
     }
 }
 
-impl<'a> DigestErrorType for HaceController<'_> {
+impl DigestErrorType for HaceController<'_> {
     type Error = Infallible;
 }
 
-impl<'a> MacErrorType for HaceController<'_> {
+impl MacErrorType for HaceController<'_> {
     type Error = Infallible;
 }
 
