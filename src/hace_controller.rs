@@ -3,9 +3,6 @@ use core::convert::Infallible;
 use proposed_traits::digest::ErrorType as DigestErrorType;
 use proposed_traits::mac::ErrorType as MacErrorType;
 
-#[link_section = ".ram_nc"]
-static mut HMAC_CTX: AspeedHashContext = AspeedHashContext::new();
-
 const SHA1_IV: [u32; 8] = [
     0x0123_4567,
     0x89ab_cdef,
@@ -195,6 +192,27 @@ impl AspeedHashContext {
     }
 }
 
+use core::cell::UnsafeCell;
+
+/// Safe wrapper for section-placed context
+struct SectionPlacedContext(UnsafeCell<AspeedHashContext>);
+
+unsafe impl Sync for SectionPlacedContext {}
+
+impl SectionPlacedContext {
+    const fn new() -> Self {
+        Self(UnsafeCell::new(AspeedHashContext::new()))
+    }
+
+    fn get(&self) -> *mut AspeedHashContext {
+        self.0.get()
+    }
+}
+
+/// Context specifically allocated in non-cacheable RAM section
+#[link_section = ".ram_nc"]
+static SHARED_HASH_CTX: SectionPlacedContext = SectionPlacedContext::new();
+
 #[derive(Copy, Clone)]
 pub enum HashAlgo {
     SHA1,
@@ -271,7 +289,7 @@ impl HashAlgo {
 pub struct HaceController<'ctrl> {
     pub hace: &'ctrl Hace,
     pub algo: HashAlgo,
-    pub aspeed_hash_ctx: *mut AspeedHashContext,
+    pub aspeed_hash_ctx: AspeedHashContext, // Own the context instead of using a pointer
 }
 
 impl<'ctrl> HaceController<'ctrl> {
@@ -279,8 +297,14 @@ impl<'ctrl> HaceController<'ctrl> {
         Self {
             hace,
             algo: HashAlgo::SHA256,
-            aspeed_hash_ctx: core::ptr::addr_of_mut!(HMAC_CTX),
+            aspeed_hash_ctx: AspeedHashContext::new(), // Create a new context instance
         }
+    }
+
+    /// Get a mutable reference to the shared context in `.ram_nc` section
+    /// This approach uses the section-placed context directly
+    pub fn shared_ctx() -> *mut AspeedHashContext {
+        SHARED_HASH_CTX.get()
     }
 }
 
@@ -294,7 +318,7 @@ impl MacErrorType for HaceController<'_> {
 
 impl HaceController<'_> {
     pub fn ctx_mut(&mut self) -> &mut AspeedHashContext {
-        unsafe { &mut *self.aspeed_hash_ctx }
+        &mut self.aspeed_hash_ctx // Direct reference to owned context
     }
 
     pub fn start_hash_operation(&mut self, len: u32) {
