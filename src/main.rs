@@ -3,37 +3,34 @@
 
 use core::sync::atomic::AtomicBool;
 // use core::arch::asm;
-use ast1060_pac::Peripherals;
 use aspeed_ddk::uart::{Config, UartController};
-use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::watchdog::WdtController;
+use ast1060_pac::Peripherals;
+use ast1060_pac::{Wdt, Wdt1};
 
-use fugit::MillisDurationU32 as MilliSeconds;
-use aspeed_ddk::hace_controller::HaceController;
-use aspeed_ddk::syscon::SysCon;
 use aspeed_ddk::ecdsa::AspeedEcdsa;
+use aspeed_ddk::hace_controller::HaceController;
 use aspeed_ddk::rsa::AspeedRsa;
+use aspeed_ddk::syscon::SysCon;
+use fugit::MillisDurationU32 as MilliSeconds;
 
+use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use aspeed_ddk::tests::functional::hmac_test::run_hmac_tests;
-use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
 use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
 use panic_halt as _;
 
 use cortex_m_rt::entry;
 use embedded_hal::delay::DelayNs;
 
-use embedded_io::Write;
-use cortex_m_rt::pre_init;
 use core::ptr::{read_volatile, write_volatile};
-
-
-
+use cortex_m_rt::pre_init;
+use embedded_io::Write;
 
 #[pre_init]
 unsafe fn pre_init() {
-    let jtag_pinmux_offset : u32 = 0x7e6e2000 + 0x41c;
-    let mut reg : u32;
+    let jtag_pinmux_offset: u32 = 0x7e6e2000 + 0x41c;
+    let mut reg: u32;
     reg = read_volatile(jtag_pinmux_offset as *const u32);
     reg |= 0x1f << 25;
     write_volatile(jtag_pinmux_offset as *mut u32, reg);
@@ -66,7 +63,7 @@ impl DelayNs for DummyDelay {
     }
 }
 
-fn test_wdt( uart:&mut UartController<'_>) {
+fn test_wdt(uart: &mut UartController<'_>) {
     //instantiates the controller for the hardware watchdog Wdt and Wdt1
     let mut wdt0 = WdtController::<Wdt>::new();
     let mut wdt1 = WdtController::<Wdt1>::new();
@@ -99,8 +96,8 @@ pub static HALT: AtomicBool = AtomicBool::new(true);
 #[macro_export]
 macro_rules! debug_halt {
     () => {{
-        use core::sync::atomic::{AtomicBool, Ordering};
         use core::arch::asm;
+        use core::sync::atomic::{AtomicBool, Ordering};
 
         static HALT: AtomicBool = AtomicBool::new(true);
 
@@ -114,7 +111,6 @@ macro_rules! debug_halt {
 
 #[entry]
 fn main() -> ! {
-
     let _peripherals = unsafe { Peripherals::steal() };
     let uart = _peripherals.uart;
     let mut delay = DummyDelay::default();
@@ -139,7 +135,6 @@ fn main() -> ! {
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
-
     // Enable HACE (Hash and Crypto Engine)
     let delay = DummyDelay::default();
     let mut syscon = SysCon::new(delay.clone(), scu);
@@ -162,4 +157,3 @@ fn main() -> ! {
     // Initialize the peripherals here if needed
     loop {}
 }
-

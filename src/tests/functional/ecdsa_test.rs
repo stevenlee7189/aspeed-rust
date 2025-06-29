@@ -1,8 +1,8 @@
+use crate::ecdsa::{PublicKey, Scalar48, Secp384r1Curve, Signature};
 use crate::uart::UartController;
+use embedded_io::Write;
 use proposed_traits::digest::DigestAlgorithm;
 use proposed_traits::ecdsa::{Curve, EcdsaVerify};
-use crate::ecdsa::{PublicKey, Scalar48, Signature, Secp384r1Curve};
-use embedded_io::Write;
 
 use hex_literal::hex;
 
@@ -82,14 +82,22 @@ pub const SECP384R1_TESTVEC: &[EcdsaTestVec] = &[
     },
 ];
 
-
-pub fn run_ecdsa_tests(uart: &mut UartController, verifier: &mut impl EcdsaVerify<Secp384r1Curve, PublicKey = PublicKey, Signature = Signature>)
-{
+pub fn run_ecdsa_tests(
+    uart: &mut UartController,
+    verifier: &mut impl EcdsaVerify<Secp384r1Curve, PublicKey = PublicKey, Signature = Signature>,
+) {
     writeln!(uart, "\r\nRunning ECDSA test").unwrap();
     for (i, vec) in SECP384R1_TESTVEC.iter().enumerate() {
-        let pubkey = PublicKey { qx: Scalar48(vec.qx), qy: Scalar48(vec.qy) };
-        let sig = Signature { r: Scalar48(vec.r), s: Scalar48(vec.s) };
-        let mut digest = <<Secp384r1Curve as Curve>::DigestType as DigestAlgorithm>::DigestOutput::default();
+        let pubkey = PublicKey {
+            qx: Scalar48(vec.qx),
+            qy: Scalar48(vec.qy),
+        };
+        let sig = Signature {
+            r: Scalar48(vec.r),
+            s: Scalar48(vec.s),
+        };
+        let mut digest =
+            <<Secp384r1Curve as Curve>::DigestType as DigestAlgorithm>::DigestOutput::default();
         digest.as_mut().copy_from_slice(&vec.m);
 
         let result = verifier.verify(&pubkey, digest, &sig);

@@ -1,0 +1,3 @@
+# Override the default target for xtask to run on the host
+[build]
+target-dir = "target"

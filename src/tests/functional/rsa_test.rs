@@ -1,13 +1,10 @@
-use crate::uart::UartController;
-use proposed_traits::rsa::{RsaSign, RsaVerify,  PaddingMode};
-use crate::rsa::{RsaPrivateKey, RsaPublicKey, RsaDigest, RsaSignatureData};
+use crate::rsa::{RsaDigest, RsaPrivateKey, RsaPublicKey, RsaSignatureData};
 use crate::tests::functional::rsa_test_vec::RSA_VERIFY_TV;
+use crate::uart::UartController;
 use embedded_io::Write;
+use proposed_traits::rsa::{PaddingMode, RsaSign, RsaVerify};
 
-pub fn run_rsa_signing_tests<'a, T>(
-    uart: &mut UartController,
-    engine: &mut T,
-)
+pub fn run_rsa_signing_tests<'a, T>(uart: &mut UartController, engine: &mut T)
 where
     T: RsaSign<PrivateKey = RsaPrivateKey<'a>, Message = RsaDigest, Signature = RsaSignatureData>,
 {
@@ -23,7 +20,14 @@ where
 
         let mut digest = [0u8; 64];
         if vec.d_size > digest.len() {
-            writeln!(uart, "\rRSA vector[{}] digest size {} exceeds buffer size {}", i, vec.d_size, digest.len()).ok();
+            writeln!(
+                uart,
+                "\rRSA vector[{}] digest size {} exceeds buffer size {}",
+                i,
+                vec.d_size,
+                digest.len()
+            )
+            .ok();
             continue;
         }
 
@@ -34,16 +38,17 @@ where
             len: vec.d_size,
         };
 
-        let result = engine.sign(
-            &pubkey,
-            message,
-            PaddingMode::Pkcs1v15,
-        );
+        let result = engine.sign(&pubkey, message, PaddingMode::Pkcs1v15);
 
         match result {
             Ok(signature) => {
                 if signature.len != vec.s_size {
-                    writeln!(uart, "\rRSA vector[{}] signature length mismatch: expected {}, got {}", i, vec.s_size, signature.len).ok();
+                    writeln!(
+                        uart,
+                        "\rRSA vector[{}] signature length mismatch: expected {}, got {}",
+                        i, vec.s_size, signature.len
+                    )
+                    .ok();
                     writeln!(
                         uart,
                         "\rRSA vector[{}] signature mismatch:\r\n  expected: {:02x?}\r\n  got     : {:02x?}",
@@ -54,7 +59,7 @@ where
                         .ok();
                     continue;
                 }
-                if &signature.data[..signature.len] != &vec.signature[..vec.s_size] {
+                if signature.data[..signature.len] != vec.signature[..vec.s_size] {
                     writeln!(
                         uart,
                         "\rRSA vector[{}] signature mismatch:\r\n  expected: {:02x?}\r\n  got     : {:02x?}",
@@ -75,10 +80,7 @@ where
     }
 }
 
-pub fn run_rsa_verification_tests<'a, T>(
-    uart: &mut UartController,
-    engine: &mut T,
-)
+pub fn run_rsa_verification_tests<'a, T>(uart: &mut UartController, engine: &mut T)
 where
     T: RsaVerify<PublicKey = RsaPublicKey<'a>, Message = RsaDigest, Signature = RsaSignatureData>,
 {
@@ -92,9 +94,16 @@ where
             e_bits: vec.k.e_bits as u32,
         };
 
-        let mut digest = [0u8;  64];
+        let mut digest = [0u8; 64];
         if vec.d_size > digest.len() {
-            writeln!(uart, "\rRSA vector[{}] digest size {} exceeds buffer size {}", i, vec.d_size, digest.len()).ok();
+            writeln!(
+                uart,
+                "\rRSA vector[{}] digest size {} exceeds buffer size {}",
+                i,
+                vec.d_size,
+                digest.len()
+            )
+            .ok();
             continue;
         }
 
@@ -107,7 +116,12 @@ where
 
         let mut sig = [0u8; 512];
         if vec.s_size > sig.len() {
-            writeln!(uart, "\rVector[{}] signature size too large: {}", i, vec.s_size).ok();
+            writeln!(
+                uart,
+                "\rVector[{}] signature size too large: {}",
+                i, vec.s_size
+            )
+            .ok();
             continue;
         }
         sig[..vec.s_size].copy_from_slice(&vec.signature[..vec.s_size]);
@@ -117,12 +131,7 @@ where
             len: vec.s_size,
         };
 
-        let result = engine.verify(
-            &pubkey,
-            message,
-            PaddingMode::Pkcs1v15,
-            &signature,
-        );
+        let result = engine.verify(&pubkey, message, PaddingMode::Pkcs1v15, &signature);
 
         match result {
             Ok(_decrypted) => {
@@ -135,10 +144,7 @@ where
     }
 }
 
-pub fn run_rsa_tests<'a, T>(
-    uart: &mut UartController,
-    engine: &mut T,
-)
+pub fn run_rsa_tests<'a, T>(uart: &mut UartController, engine: &mut T)
 where
     T: RsaVerify<PublicKey = RsaPublicKey<'a>, Message = RsaDigest, Signature = RsaSignatureData>
         + RsaSign<PrivateKey = RsaPrivateKey<'a>, Message = RsaDigest, Signature = RsaSignatureData>,
@@ -146,5 +152,4 @@ where
     writeln!(uart, "\r\nRunning RSA tests...").unwrap();
     run_rsa_verification_tests(uart, engine);
     run_rsa_signing_tests(uart, engine);
-
 }
