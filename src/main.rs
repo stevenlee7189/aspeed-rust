@@ -9,12 +9,13 @@ use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::watchdog::WdtController;
 
 use fugit::MillisDurationU32 as MilliSeconds;
-use aspeed_ddk::hash::Controller;
+use aspeed_ddk::hace_controller::HaceController;
 use aspeed_ddk::syscon::SysCon;
 use aspeed_ddk::ecdsa::AspeedEcdsa;
 use aspeed_ddk::rsa::AspeedRsa;
 
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
+use aspeed_ddk::tests::functional::hmac_test::run_hmac_tests;
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
 use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
 use panic_halt as _;
@@ -135,9 +136,9 @@ fn main() -> ! {
     let mut syscon = SysCon::new(delay.clone(), scu);
     syscon.enable_hace();
 
-    let mut hace_controller = Controller::new(hace);
-
+    let mut hace_controller = HaceController::new(&hace);
     run_hash_tests(&mut uart_controller, &mut hace_controller);
+    run_hmac_tests(&mut uart_controller, &mut hace_controller);
 
     // Enable RSA and ECC
     syscon.enable_rsa_ecc();
