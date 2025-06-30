@@ -1,4 +1,4 @@
-use crate::hace_controller::{HaceController, HashAlgo, HACE_SG_EN};
+use crate::hace_controller::{ContextCleanup, HaceController, HashAlgo, HACE_SG_EN};
 use core::convert::Infallible;
 use proposed_traits::mac::*;
 
@@ -242,15 +242,7 @@ where
         let mut output = A::MacOutput::default();
         output.as_mut()[..digest_size].copy_from_slice(slice);
 
-        let ctx = self.controller.ctx_mut();
-        ctx.bufcnt = 0;
-        ctx.buffer.fill(0);
-        ctx.digest.fill(0);
-        ctx.digcnt = [0; 2];
-
-        unsafe {
-            self.controller.hace.hace30().write(|w| w.bits(0));
-        }
+        self.controller.cleanup_context();
 
         Ok(output) // Return the final output
     }

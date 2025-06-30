@@ -128,6 +128,25 @@ const HACE_ALGO_SHA384: u32 = (1 << 5) | (1 << 6) | (1 << 10);
 const HACE_ALGO_SHA512_224: u32 = (1 << 5) | (1 << 6) | (1 << 10) | (1 << 11);
 const HACE_ALGO_SHA512_256: u32 = (1 << 5) | (1 << 6) | (1 << 11);
 
+/// Common context cleanup functionality
+pub trait ContextCleanup {
+    fn cleanup_context(&mut self);
+}
+
+impl ContextCleanup for crate::hace_controller::HaceController<'_> {
+    fn cleanup_context(&mut self) {
+        let ctx = self.ctx_mut();
+        ctx.bufcnt = 0;
+        ctx.buffer.fill(0);
+        ctx.digest.fill(0);
+        ctx.digcnt = [0; 2];
+
+        unsafe {
+            self.hace.hace30().write(|w| w.bits(0));
+        }
+    }
+}
+
 #[derive(Default, Copy, Clone)]
 pub struct AspeedSg {
     pub len: u32,
