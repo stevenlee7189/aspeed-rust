@@ -337,7 +337,7 @@ impl MacErrorType for HaceController<'_> {
 
 impl HaceController<'_> {
     pub fn ctx_mut(&mut self) -> &mut AspeedHashContext {
-        &mut self.aspeed_hash_ctx // Direct reference to owned context
+        unsafe { &mut *Self::shared_ctx() }
     }
 
     pub fn start_hash_operation(&mut self, len: u32) {
