@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use crate::rsa::{RsaDigest, RsaPrivateKey, RsaPublicKey, RsaSignatureData};
 use crate::tests::functional::rsa_test_vec::RSA_VERIFY_TV;
 use crate::uart::UartController;

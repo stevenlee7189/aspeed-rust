@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use ast1060_pac::Uart;
 use embedded_hal::delay::DelayNs;
 use embedded_io::ErrorKind;

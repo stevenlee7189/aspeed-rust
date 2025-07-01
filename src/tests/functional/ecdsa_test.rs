@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use crate::ecdsa::{PublicKey, Scalar48, Secp384r1Curve, Signature};
 use crate::uart::UartController;
 use embedded_io::Write;

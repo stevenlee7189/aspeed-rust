@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use ast1060_pac::Secure;
 use core::ptr::{read_volatile, write_bytes, write_volatile, NonNull};
 use embedded_hal::delay::DelayNs;

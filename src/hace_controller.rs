@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use ast1060_pac::Hace;
 use core::convert::Infallible;
 use proposed_traits::digest::ErrorType as DigestErrorType;

@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use ast1060_pac::Scu;
 use embedded_hal::delay::DelayNs;
 
