@@ -15,26 +15,24 @@ where
             m: vec.k.m,
             d: vec.k.d,
             // m_bits: vec.k.m_bits as u32,
-            m_bits: u32::try_from(vec.k.m_bits)
-                .unwrap_or_else(|_| {
-                    writeln!(
-                        uart,
-                        "\rRSA vector[{}] m_bits {} exceeds u32 limit",
-                        i, vec.k.m_bits
-                    )
-                    .ok();
-                    0
-                }),
-            d_bits: u32::try_from(vec.k.d_bits)
-                .unwrap_or_else(|_| {
-                    writeln!(
-                        uart,
-                        "\rRSA vector[{}] d_bits {} exceeds u32 limit",
-                        i, vec.k.d_bits
-                    )
-                    .ok();
-                    0
-                }),
+            m_bits: u32::try_from(vec.k.m_bits).unwrap_or_else(|_| {
+                writeln!(
+                    uart,
+                    "\rRSA vector[{}] m_bits {} exceeds u32 limit",
+                    i, vec.k.m_bits
+                )
+                .ok();
+                0
+            }),
+            d_bits: u32::try_from(vec.k.d_bits).unwrap_or_else(|_| {
+                writeln!(
+                    uart,
+                    "\rRSA vector[{}] d_bits {} exceeds u32 limit",
+                    i, vec.k.d_bits
+                )
+                .ok();
+                0
+            }),
         };
 
         let mut digest = [0u8; 64];
@@ -109,26 +107,24 @@ where
         let pubkey = RsaPublicKey {
             m: vec.k.m,
             e: vec.k.e,
-            m_bits: u32::try_from(vec.k.m_bits)
-                .unwrap_or_else(|_| {
-                    writeln!(
-                        uart,
-                        "\rRSA vector[{}] m_bits {} exceeds u32 limit",
-                        i, vec.k.m_bits
-                    )
-                    .ok();
-                    0
-                }),
-            e_bits: u32::try_from(vec.k.e_bits)
-                .unwrap_or_else(|_| {
-                    writeln!(
-                        uart,
-                        "\rRSA vector[{}] e_bits {} exceeds u32 limit",
-                        i, vec.k.e_bits
-                    )
-                    .ok();
-                    0
-                }),
+            m_bits: u32::try_from(vec.k.m_bits).unwrap_or_else(|_| {
+                writeln!(
+                    uart,
+                    "\rRSA vector[{}] m_bits {} exceeds u32 limit",
+                    i, vec.k.m_bits
+                )
+                .ok();
+                0
+            }),
+            e_bits: u32::try_from(vec.k.e_bits).unwrap_or_else(|_| {
+                writeln!(
+                    uart,
+                    "\rRSA vector[{}] e_bits {} exceeds u32 limit",
+                    i, vec.k.e_bits
+                )
+                .ok();
+                0
+            }),
         };
 
         let mut digest = [0u8; 64];
