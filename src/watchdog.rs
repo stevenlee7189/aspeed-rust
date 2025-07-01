@@ -58,8 +58,15 @@ const WDT_RATE_1MHZ: u32 = 1_000_000;
 const MAX_TIMEOUT_MS: u32 = 4_294_967;
 const RESTART_MAGIC: u16 = 0x4755;
 
+impl<WDT: WdtInstance> Default for WdtController<WDT> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<WDT: WdtInstance> WdtController<WDT> {
     /// Creates a new `WdtController` without starting it.
+    #[must_use]
     pub fn new() -> Self {
         let wdt = unsafe { &*WDT::ptr() };
         Self {
@@ -84,7 +91,7 @@ impl<WDT: WdtInstance> WdtController<WDT> {
 
         self.wdt
             .wdt008()
-            .write(|w| unsafe { w.restart_reg().bits(RESTART_MAGIC as u16) });
+            .write(|w| unsafe { w.restart_reg().bits(RESTART_MAGIC) });
     }
 
     pub fn start(&self, period: MilliSeconds) {

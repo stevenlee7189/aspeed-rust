@@ -72,6 +72,7 @@ pub fn gen_boot_image(input: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn clean() -> Result<()> {
     println!("Cleaning build artifacts...");
 

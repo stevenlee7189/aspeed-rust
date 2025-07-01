@@ -12,7 +12,7 @@ fn print_hex_array(uart: &mut UartController, data: &[u8], bytes_per_line: usize
         } else {
             write!(uart, " ").unwrap();
         }
-        write!(uart, "{:02x}", b).unwrap();
+        write!(uart, "{b:02x}").unwrap();
     }
     writeln!(uart).unwrap();
 }
@@ -20,10 +20,10 @@ fn print_hex_array(uart: &mut UartController, data: &[u8], bytes_per_line: usize
 fn print_input(uart: &mut UartController, algo: &str, input: &[u8]) {
     match core::str::from_utf8(input) {
         Ok(ascii) => {
-            write!(uart, "\r\n{} of \"{}\" [", algo, ascii).unwrap();
+            write!(uart, "\r\n{algo} of \"{ascii}\" [").unwrap();
         }
         Err(_) => {
-            write!(uart, "\r\n{} of [", algo).unwrap();
+            write!(uart, "\r\n{algo} of [").unwrap();
         }
     }
 
@@ -31,7 +31,7 @@ fn print_input(uart: &mut UartController, algo: &str, input: &[u8]) {
         if i > 0 {
             write!(uart, ", ").unwrap();
         }
-        write!(uart, "0x{:02x}", b).unwrap();
+        write!(uart, "0x{b:02x}").unwrap();
     }
     writeln!(uart, "]:").unwrap();
 }

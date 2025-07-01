@@ -217,7 +217,7 @@ impl Error for AspeedEcdsaError {
         match self {
             Self::InvalidSignature => ErrorKind::InvalidSignature,
             Self::Busy => ErrorKind::Busy,
-            _ => ErrorKind::Other,
+            Self::BadInput => ErrorKind::Other,
         }
     }
 }
@@ -246,26 +246,22 @@ impl<'a, D: DelayNs> AspeedEcdsa<'a, D> {
         }
     }
 
-    #[inline(always)]
     fn sec_rd(&self, offset: usize) -> u32 {
         unsafe { read_volatile(self.ecdsa_base.as_ptr().add(offset / 4)) }
     }
 
-    #[inline(always)]
     fn sec_wr(&self, offset: usize, val: u32) {
         unsafe {
             write_volatile(self.ecdsa_base.as_ptr().add(offset / 4), val);
         }
     }
 
-    #[inline(always)]
     fn sram_wr_u32(&self, offset: usize, val: u32) {
         unsafe {
             write_volatile(self.sram_base.as_ptr().add(offset / 4), val);
         }
     }
 
-    #[inline(always)]
     fn sram_wr(&self, offset: usize, data: &[u8; Scalar48::LEN]) {
         for i in (0..Scalar48::LEN).step_by(4) {
             let val = u32::from_le_bytes([data[i], data[i + 1], data[i + 2], data[i + 3]]);

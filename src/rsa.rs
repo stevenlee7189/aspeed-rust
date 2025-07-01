@@ -86,8 +86,8 @@ impl ToBytes for RsaDigest {
             return Err(SignatureSerdeError::BufferTooSmall);
         }
 
-        for i in 0..self.len {
-            dest[i] = self.data[self.len - i - 1];
+        for (i, dest_item) in dest.iter_mut().enumerate().take(self.len) {
+            *dest_item = self.data[self.len - i - 1];
         }
 
         Ok(())
@@ -117,9 +117,11 @@ impl ToBytes for RsaSignatureData {
         if dest.len() < self.len {
             return Err(SignatureSerdeError::BufferTooSmall);
         }
-        for i in 0..self.len {
-            dest[i] = self.data[self.len - i - 1];
+
+        for (i, dest_item) in dest.iter_mut().enumerate().take(self.len) {
+            *dest_item = self.data[self.len - i - 1];
         }
+
         Ok(())
     }
 }
@@ -144,6 +146,12 @@ impl CommonErrorType for RsaSignatureData {
     type Error = SignatureSerdeError;
 }
 
+#[derive(Debug)]
+pub enum PaddingError {
+    OutputTooSmall,
+    UnsupportedDigest,
+}
+
 pub struct AspeedRsa<'a, D: DelayNs> {
     pub secure: &'a Secure,
     sram_base: NonNull<u8>,
@@ -159,7 +167,7 @@ impl<'a, D: DelayNs> AspeedRsa<'a, D> {
         }
     }
 
-    pub fn pkcs1_v1_5_pad_inplace(digest: &[u8], out: &mut [u8]) -> Result<usize, ()> {
+    pub fn pkcs1_v1_5_pad_inplace(digest: &[u8], out: &mut [u8]) -> Result<usize, PaddingError> {
         const DER_SHA256: &[u8] = &[
             0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
             0x01, 0x05, 0x00, 0x04, 0x20,
@@ -177,14 +185,14 @@ impl<'a, D: DelayNs> AspeedRsa<'a, D> {
             32 => (DER_SHA256, 32),
             48 => (DER_SHA384, 48),
             64 => (DER_SHA512, 64),
-            _ => return Err(()), // unsupported digest size
+            _ => return Err(PaddingError::UnsupportedDigest), // unsupported digest size
         };
 
         let t_len = der.len() + hash_len;
         let out_len = out.len();
 
         if out_len < t_len + 11 {
-            return Err(());
+            return Err(PaddingError::OutputTooSmall);
         }
 
         let mut idx = 0;
@@ -353,7 +361,7 @@ impl<D: DelayNs> RsaSign for AspeedRsa<'_, D> {
 
         let mut padded_input = [0u8; 512];
         let padded_len = Self::pkcs1_v1_5_pad_inplace(input, &mut padded_input[..m_len])
-            .map_err(|_| RsaDriverError::InvalidLength)?;
+            .map_err(|_e| RsaDriverError::InvalidLength)?;
         let len = self.aspeed_rsa_trigger(
             &padded_input[..padded_len],
             &mut output,

@@ -151,6 +151,7 @@ pub struct AspeedSg {
 }
 
 impl AspeedSg {
+    #[must_use]
     pub const fn new() -> Self {
         Self { len: 0, addr: 0 }
     }
@@ -193,6 +194,7 @@ impl Default for AspeedHashContext {
 }
 
 impl AspeedHashContext {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             sg: [AspeedSg::new(), AspeedSg::new()],
@@ -244,6 +246,7 @@ pub enum HashAlgo {
 }
 
 impl HashAlgo {
+    #[must_use]
     pub const fn digest_size(&self) -> usize {
         match self {
             HashAlgo::SHA1 => 20,
@@ -254,6 +257,7 @@ impl HashAlgo {
         }
     }
 
+    #[must_use]
     pub const fn block_size(&self) -> usize {
         match self {
             HashAlgo::SHA1 | HashAlgo::SHA224 | HashAlgo::SHA256 => 64,
@@ -263,6 +267,7 @@ impl HashAlgo {
         }
     }
 
+    #[must_use]
     pub const fn bitmask(&self) -> u32 {
         match self {
             HashAlgo::SHA1 => HACE_ALGO_SHA1,
@@ -275,6 +280,7 @@ impl HashAlgo {
         }
     }
 
+    #[must_use]
     pub const fn iv(&self) -> &'static [u32] {
         match self {
             HashAlgo::SHA1 => &SHA1_IV,
@@ -287,6 +293,7 @@ impl HashAlgo {
         }
     }
 
+    #[must_use]
     pub const fn iv_size(&self) -> usize {
         match self {
             HashAlgo::SHA1 => SHA1_IV.len(),
@@ -299,6 +306,7 @@ impl HashAlgo {
         }
     }
 
+    #[must_use]
     pub fn hash_cmd(&self) -> u32 {
         const COMMON_FLAGS: u32 = HACE_CMD_ACC_MODE | HACE_SHA_BE_EN | HACE_SG_EN;
         COMMON_FLAGS | self.bitmask()
@@ -312,6 +320,7 @@ pub struct HaceController<'ctrl> {
 }
 
 impl<'ctrl> HaceController<'ctrl> {
+    #[must_use]
     pub fn new(hace: &'ctrl Hace) -> Self {
         Self {
             hace,
@@ -370,7 +379,7 @@ impl HaceController<'_> {
     pub fn copy_iv_to_digest(&mut self) {
         let iv = self.algo.iv();
         let iv_bytes =
-            unsafe { core::slice::from_raw_parts(iv.as_ptr() as *const u8, iv.len() * 4) };
+            unsafe { core::slice::from_raw_parts(iv.as_ptr().cast::<u8>(), iv.len() * 4) };
 
         self.ctx_mut().digest[..iv_bytes.len()].copy_from_slice(iv_bytes);
     }
@@ -381,7 +390,7 @@ impl HaceController<'_> {
         let digest_len = self.algo.digest_size();
 
         self.ctx_mut().digcnt[0] = key_len as u64;
-        self.ctx_mut().bufcnt = key_len as u32;
+        self.ctx_mut().bufcnt = u32::try_from(key_len).expect("key_len too large to fit in u32");
         self.ctx_mut().buffer[..key_len].copy_from_slice(key_bytes);
         self.ctx_mut().method &= !HACE_SG_EN; // Disable SG mode for key hashing
         self.copy_iv_to_digest();
@@ -395,11 +404,12 @@ impl HaceController<'_> {
         self.ctx_mut().key[..digest_len].copy_from_slice(slice);
         self.ctx_mut().ipad[..digest_len].copy_from_slice(slice);
         self.ctx_mut().opad[..digest_len].copy_from_slice(slice);
-        self.ctx_mut().key_len = digest_len as u32;
+        self.ctx_mut().key_len =
+            u32::try_from(digest_len).expect("digest_len too large to fit in u32");
     }
 
     pub fn fill_padding(&mut self, remaining: usize) {
-        let ctx = &mut self.ctx_mut();
+        let ctx = self.ctx_mut();
         let block_size = ctx.block_size as usize;
         let bufcnt = ctx.bufcnt as usize;
 
@@ -422,7 +432,7 @@ impl HaceController<'_> {
         if block_size == 64 {
             let bits = (ctx.digcnt[0] << 3).to_be_bytes();
             ctx.buffer[bufcnt + padlen..bufcnt + padlen + 8].copy_from_slice(&bits);
-            ctx.bufcnt += (padlen + 8) as u32;
+            ctx.bufcnt += u32::try_from(padlen + 8).expect("padlen + 8 too large to fit in u32");
         } else {
             let low = (ctx.digcnt[0] << 3).to_be_bytes();
             let high = ((ctx.digcnt[1] << 3) | (ctx.digcnt[0] >> 61)).to_be_bytes();
@@ -430,7 +440,7 @@ impl HaceController<'_> {
             ctx.buffer[bufcnt + padlen..bufcnt + padlen + 8].copy_from_slice(&high);
             ctx.buffer[bufcnt + padlen + 8..bufcnt + padlen + 16].copy_from_slice(&low);
 
-            ctx.bufcnt += (padlen + 16) as u32;
+            ctx.bufcnt += u32::try_from(padlen + 16).expect("padlen + 16 too large to fit in u32");
         }
     }
 }

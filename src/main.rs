@@ -29,22 +29,22 @@ use embedded_io::Write;
 
 #[pre_init]
 unsafe fn pre_init() {
-    let jtag_pinmux_offset: u32 = 0x7e6e2000 + 0x41c;
+    let jtag_pinmux_offset: u32 = 0x7e6e_2000 + 0x41c;
     let mut reg: u32;
     reg = read_volatile(jtag_pinmux_offset as *const u32);
     reg |= 0x1f << 25;
     write_volatile(jtag_pinmux_offset as *mut u32, reg);
 
     // Disable Cache
-    let cache_ctrl_offset: u32 = 0x7e6e2a58;
+    let cache_ctrl_offset: u32 = 0x7e6e_2a58;
     write_volatile(cache_ctrl_offset as *mut u32, 0);
 
     // Configure Cache Area and Invalidation
-    let cache_area_offset: u32 = 0x7e6e2a50;
+    let cache_area_offset: u32 = 0x7e6e_2a50;
     let cache_val = 0x000f_ffff;
     write_volatile(cache_area_offset as *mut u32, cache_val);
 
-    let cache_inval_offset: u32 = 0x7e6e2a54;
+    let cache_inval_offset: u32 = 0x7e6e_2a54;
     let cache_inval_val = 0x8660_0000;
     write_volatile(cache_inval_offset as *mut u32, cache_inval_val);
 
@@ -56,8 +56,8 @@ unsafe fn pre_init() {
 struct DummyDelay;
 
 impl DelayNs for DummyDelay {
-    fn delay_ns(&mut self, _ns: u32) {
-        for _ in 0.._ns {
+    fn delay_ns(&mut self, ns: u32) {
+        for _ in 0..ns {
             cortex_m::asm::nop();
         }
     }
@@ -111,17 +111,17 @@ macro_rules! debug_halt {
 
 #[entry]
 fn main() -> ! {
-    let _peripherals = unsafe { Peripherals::steal() };
-    let uart = _peripherals.uart;
-    let mut delay = DummyDelay::default();
+    let peripherals = unsafe { Peripherals::steal() };
+    let uart = peripherals.uart;
+    let mut delay = DummyDelay;
 
     // For jlink attach
     // set aspeed_ddk::__cortex_m_rt_main::HALT.v.value = 0 in gdb
     // debug_halt!();
     let mut uart_controller = UartController::new(uart, &mut delay);
     unsafe {
-        uart_controller.init(Config {
-            baud_rate: 115200,
+        uart_controller.init(&Config {
+            baud_rate: 115_200,
             word_length: aspeed_ddk::uart::WordLength::Eight as u8,
             parity: aspeed_ddk::uart::Parity::None,
             stop_bits: aspeed_ddk::uart::StopBits::One,
@@ -129,14 +129,14 @@ fn main() -> ! {
         });
     }
 
-    let hace = _peripherals.hace;
-    let scu = _peripherals.scu;
-    let secure = _peripherals.secure;
+    let hace = peripherals.hace;
+    let scu = peripherals.scu;
+    let secure = peripherals.secure;
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
     // Enable HACE (Hash and Crypto Engine)
-    let delay = DummyDelay::default();
+    let delay = DummyDelay;
     let mut syscon = SysCon::new(delay.clone(), scu);
     syscon.enable_hace();
 
@@ -154,6 +154,9 @@ fn main() -> ! {
     run_rsa_tests(&mut uart_controller, &mut rsa);
 
     test_wdt(&mut uart_controller);
+
     // Initialize the peripherals here if needed
-    loop {}
+    loop {
+        cortex_m::asm::wfi();
+    }
 }
