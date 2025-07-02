@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 pub mod ecdsa;
 pub mod hace_controller;
 pub mod hash;
