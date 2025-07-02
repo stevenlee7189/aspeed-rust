@@ -142,10 +142,7 @@ fn main() -> ! {
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
-    //i2c_test::test_i2c_master(&mut uart_controller);
-    #[cfg(feature = "i2c_target")]
-    i2c_test::test_i2c_slave(&mut uart_controller);
-    /*
+
     // Enable HACE (Hash and Crypto Engine)
     let delay = DummyDelay;
     let mut syscon = SysCon::new(delay.clone(), scu);
@@ -170,7 +167,10 @@ fn main() -> ! {
     let mut rsa = AspeedRsa::new(&secure, delay);
     run_rsa_tests(&mut uart_controller, &mut rsa);
     gpio_test::test_gpioa(&mut uart_controller);
-    test_wdt(&mut uart_controller);*/
+    i2c_test::test_i2c_master(&mut uart_controller);
+    #[cfg(feature = "i2c_target")]
+    i2c_test::test_i2c_slave(&mut uart_controller);
+    test_wdt(&mut uart_controller);
     let test_spicontroller = false;
     if test_spicontroller {
         spi::spitest::test_fmc(&mut uart_controller);
