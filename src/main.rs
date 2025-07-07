@@ -143,7 +143,9 @@ fn main() -> ! {
     syscon.enable_hace();
 
     let mut hace_controller = HaceController::new(&hace);
+
     run_hash_tests(&mut uart_controller, &mut hace_controller);
+
     run_hmac_tests(&mut uart_controller, &mut hace_controller);
 
     // Enable RSA and ECC

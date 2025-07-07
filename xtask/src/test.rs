@@ -36,7 +36,17 @@ fn run_unit_tests() -> Result<()> {
 
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["test", "--lib", "--bins"])
+        // FIXME: Temporarily exclude `aspeed-ddk` since it's a no_std bare-metal crate.
+        // Once an emulator is available or host-side unit tests are added for aspeed-ddk,
+        // this exclusion should be removed.
+        .args([
+            "test",
+            "--workspace",
+            "--exclude",
+            "aspeed-ddk",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
         .status()?;
 
     if !status.success() {
@@ -52,7 +62,17 @@ fn run_integration_tests() -> Result<()> {
 
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["test", "--test", "*"])
+        // FIXME: Temporarily exclude `aspeed-ddk` since it's a no_std bare-metal crate.
+        // Once an emulator is available or host-side unit tests are added for aspeed-ddk,
+        // this exclusion should be removed.
+        .args([
+            "test",
+            "--workspace",
+            "--exclude",
+            "aspeed-ddk",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
         .status()?;
 
     if !status.success() {
@@ -146,10 +166,28 @@ fn run_hardware_test_suite(uart: &str, suite: &str) -> Result<()> {
     }
 
     // Generate UART boot image
-    let binary_path = PROJECT_ROOT.join("target/thumbv7em-none-eabihf/release/aspeed-ddk");
-    let boot_image_path = PROJECT_ROOT.join(format!("target/{}-test-boot.img", suite));
+    // let binary_path = PROJECT_ROOT.join("target/thumbv7em-none-eabihf/release/aspeed-ddk");
+    let elf_path = PROJECT_ROOT.join("target/thumbv7em-none-eabihf/release/aspeed-ddk");
+    assert!(elf_path.exists(), "ELF file not found: {:?}", elf_path);
+    println!("ELF binary path: {:?}", elf_path);
+    let bin_path = PROJECT_ROOT.join(format!("target/{}-test-{}.bin", suite, "release"));
+    println!("Binary path: {:?}", bin_path);
 
-    crate::build::gen_boot_image(&binary_path, &boot_image_path)?;
+    let _status = Command::new("cargo")
+        .args([
+            "objcopy",
+            "--target",
+            "thumbv7em-none-eabihf",
+            "--release",
+            "--",
+            "-O",
+            "binary",
+            bin_path.to_str().unwrap(),
+        ])
+        .status()?;
+
+    let boot_image_path = PROJECT_ROOT.join(format!("target/{}-test-boot.img", suite));
+    crate::build::gen_boot_image(&bin_path, &boot_image_path)?;
 
     // TODO: Add actual hardware test execution here
     // This would involve sending the boot image to the hardware via UART

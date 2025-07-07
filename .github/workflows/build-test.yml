@@ -1,0 +1,61 @@
+# Licensed under the Apache-2.0 license
+
+name: Build and Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  precommit:
+    runs-on: ubuntu-22.04
+
+    env:
+      CARGO_INCREMENTAL: 0
+      SCCACHE_VERSION: 0.8.2
+      SCCACHE_GHA_CACHE_TO: sccache-aspeed-ddk
+      SCCACHE_GHA_CACHE_FROM: sccache-aspeed-ddk
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: a1b2c3d4e5
+      EXTRA_CARGO_CONFIG: "target.'cfg(all())'.rustflags = [\"-Dwarnings\"]"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential curl gcc-arm-none-eabi llvm clang pkg-config libudev-dev
+          rustup component add clippy rustfmt llvm-tools-preview
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.1
+        with:
+          version: ${{ env.SCCACHE_VERSION }}
+
+      - name: Configure sccache
+        run: |
+          echo "RUSTC_WRAPPER=$(which sccache)" >> $GITHUB_ENV
+
+      - name: Verify Cargo.lock is up to date
+        run: |
+          cargo tree --locked > /dev/null || (
+            echo "Please update Cargo.lock"
+            cargo tree
+            git diff Cargo.lock
+            exit 1
+          )
+
+      - name: Run precommit checks (build/format/lint)
+        run: |
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask precommit
+
+      - name: Show sccache stats
+        run: sccache --show-stats
+
