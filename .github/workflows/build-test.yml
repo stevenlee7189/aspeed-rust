@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - main
+      - xtask_support
 
 jobs:
   precommit:
