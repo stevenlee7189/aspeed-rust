@@ -18,7 +18,7 @@ use fugit::MillisDurationU32 as MilliSeconds;
 
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
-use aspeed_ddk::tests::functional::hmac_test::run_hmac_tests;
+use aspeed_ddk::tests::functional::hmac_test::run_hmac_tests
 use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
 use panic_halt as _;
 
