@@ -23,7 +23,7 @@ use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
 use panic_halt as _;
 
 use cortex_m_rt::entry;
-use embedded_hal::delay::DelayNs;
+use embedded_hal::delay::DelayNs
 
 use core::ptr::{read_volatile, write_volatile};
 use cortex_m_rt::pre_init;
