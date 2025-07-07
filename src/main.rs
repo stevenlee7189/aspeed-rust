@@ -18,7 +18,7 @@ use fugit::MillisDurationU32 as MilliSeconds;
 
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
-use aspeed_ddk::tests::functional::hmac_test::run_hmac_tests
+use aspeed_ddk::tests::functional::hmac_test::run_hmac_tests;
 use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
 use panic_halt as _;
 
@@ -51,7 +51,7 @@ unsafe fn pre_init() {
     write_volatile(cache_inval_offset as *mut u32, cache_inval_val);
 
     // Enable Cache
-    write_volatile(cache_ctrl_offset as *mut u32, 1);
+      write_volatile(cache_ctrl_offset as *mut u32, 1);
 }
 
 #[derive(Clone, Default)]
