@@ -51,7 +51,7 @@ unsafe fn pre_init() {
     write_volatile(cache_inval_offset as *mut u32, cache_inval_val);
 
     // Enable Cache
-      write_volatile(cache_ctrl_offset as *mut u32, 1);
+    write_volatile(cache_ctrl_offset as *mut u32, 1);
 }
 
 #[derive(Clone, Default)]
@@ -154,8 +154,8 @@ fn main() -> ! {
     let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
     run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
 
-    let mut rsa = AspeedRsa::new(&secure, delay);
-    run_rsa_tests(&mut uart_controller, &mut rsa);
+    let mut _rsa = AspeedRsa::new(&secure, delay);
+    run_rsa_tests(&mut uart_controller, &mut _rsa);
 
     test_wdt(&mut uart_controller);
 
