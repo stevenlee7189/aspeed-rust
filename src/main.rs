@@ -138,7 +138,7 @@ fn main() -> ! {
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
     // Enable HACE (Hash and Crypto Engine)
-    let delay = DummyDelay;
+     let delay = DummyDelay;
     let mut syscon = SysCon::new(delay.clone(), scu);
     syscon.enable_hace();
 
