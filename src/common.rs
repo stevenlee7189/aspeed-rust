@@ -1,5 +1,5 @@
-use core::ops::{Index, IndexMut};
 use crate::uart::UartController;
+use core::ops::{Index, IndexMut};
 use embedded_io::Write;
 
 pub struct DummyDelay;
@@ -38,7 +38,7 @@ impl<const N: usize> DmaBuffer<N> {
         &self.buf[start..end]
     }
 
-    pub fn as_mut_slice(&mut self, start:usize, end:usize) -> &mut [u8] {
+    pub fn as_mut_slice(&mut self, start: usize, end: usize) -> &mut [u8] {
         &mut self.buf[start..end]
     }
 }
@@ -75,7 +75,7 @@ pub struct UartLogger<'a> {
 
 impl<'a> UartLogger<'a> {
     pub fn new(uart: &'a mut UartController<'a>) -> Self {
-        UartLogger{uart}
+        UartLogger { uart }
     }
 }
 
