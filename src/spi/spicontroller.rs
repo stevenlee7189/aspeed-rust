@@ -1,6 +1,15 @@
-use super::*;
+use super::{
+    aspeed_get_spi_freq_div, get_addr_buswidth, get_hclock_rate, get_mid_point_of_longest_one,
+    spi_cal_dummy_cycle, spi_calibration_enable, spi_io_mode, spi_io_mode_user, spi_read_data,
+    spi_write_data, CtrlType, SpiBusWithCs, SpiConfig, SpiData, SpiError, Write, ASPEED_MAX_CS,
+    ASPEED_SPI_NORMAL_READ, ASPEED_SPI_NORMAL_WRITE, ASPEED_SPI_SZ_256M, ASPEED_SPI_SZ_2M,
+    ASPEED_SPI_USER, ASPEED_SPI_USER_INACTIVE, SPI_CALIB_LEN, SPI_CTRL_FREQ_MASK,
+    SPI_DMA_CALC_CKSUM, SPI_DMA_CALIB_MODE, SPI_DMA_DISCARD_REQ_MAGIC, SPI_DMA_ENABLE,
+    SPI_DMA_FLASH_MAP_BASE, SPI_DMA_GET_REQ_MAGIC, SPI_DMA_GRANT, SPI_DMA_RAM_MAP_BASE,
+    SPI_DMA_REQUEST, SPI_DMA_STATUS, SPI_DMA_TIMEOUT,
+};
 use crate::dbg;
-use crate::{common::DummyDelay, uart::UartController};
+use crate::{common::DummyDelay, spi::norflash::SpiNorData, uart::UartController};
 
 use embedded_hal::{
     delay::DelayNs,
@@ -209,8 +218,8 @@ impl<'a> SpiController<'a> {
             get_addr_buswidth(op_info.mode as u32) as u32,
             op_info.dummy_cycle,
         );
-        let read_cmd = (io_mode | ((op_info.opcode & 0xff) << 16) | (dummy as u32))
-            | ASPEED_SPI_NORMAL_READ;
+        let read_cmd =
+            (io_mode | ((op_info.opcode & 0xff) << 16) | (dummy as u32)) | ASPEED_SPI_NORMAL_READ;
         self.spi_data.cmd_mode[cs].normal_read = read_cmd;
         dbg!(
             self,
@@ -341,7 +350,6 @@ impl<'a> SpiController<'a> {
 
         let hclk_masks = [7u32, 14, 6, 13];
 
-        let mut final_delay: u32 = 0;
         let mut freq_to_use = max_freq;
 
         'outer: for (i, &mask) in hclk_masks.iter().enumerate() {
@@ -395,7 +403,7 @@ impl<'a> SpiController<'a> {
             let delay_ns: u32 = (calib_point % 17) as u32;
 
             //log::debug!("Final hcycle: {}, delay_ns: {}", hcycle, delay_ns);
-            final_delay = ((1 << 3) | hcycle | (delay_ns << 4)) << (i * 8);
+            let final_delay = ((1 << 3) | hcycle | (delay_ns << 4)) << (i * 8);
             self.regs.spi084().write(|w| unsafe { w.bits(final_delay) });
             break 'outer;
         }
@@ -438,7 +446,7 @@ impl<'a> SpiController<'a> {
             .spi080()
             .write(|w| unsafe { w.bits(SPI_DMA_GET_REQ_MAGIC) });
         if self.regs.spi080().read().bits() & SPI_DMA_REQUEST != 0 {
-            while self.regs.spi080().read().bits() & &SPI_DMA_GRANT == 0 {}
+            while self.regs.spi080().read().bits() & SPI_DMA_GRANT == 0 {}
         }
 
         // Set DMA flash start address
@@ -617,6 +625,7 @@ impl<'a> SpiController<'a> {
         self.dma_disable();
         Ok(())
     }
+    /*
     fn dma_irq_disable(&mut self) {
         // Enable the DMA interrupt bit (bit 3)
         self.regs.spi008().modify(|_, w| w.dmaintenbl().clear_bit());
@@ -626,7 +635,7 @@ impl<'a> SpiController<'a> {
         // Enable the DMA interrupt bit (bit 3)
         self.regs.spi008().modify(|_, w| w.dmaintenbl().set_bit());
     }
-
+    */
     pub fn read_dma(&mut self, op: &mut SpiNorData) -> Result<(), SpiError> {
         let cs = self.current_cs;
         dbg!(self, "##### read dma ####");
@@ -791,7 +800,7 @@ impl<'a> SpiBus<u8> for SpiController<'a> {
         Ok(())
     }
 
-    fn transfer_in_place(&mut self, buffer: &mut [u8]) -> Result<(), SpiError> {
+    fn transfer_in_place(&mut self, _buffer: &mut [u8]) -> Result<(), SpiError> {
         /*let mut temp = [0u8; 2048]; //TODO:  adjust as needed
         let len = buffer.len();
         temp[..len].copy_from_slice(buffer);

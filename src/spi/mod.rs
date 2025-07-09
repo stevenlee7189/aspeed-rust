@@ -14,7 +14,6 @@ pub mod norflash;
 pub mod norflashblockdevice;
 pub mod spicontroller;
 
-
 #[derive(Debug)]
 
 pub enum SpiError {
@@ -58,21 +57,21 @@ pub trait SpiBusWithCs: SpiBus<u8, Error = SpiError> + ErrorType<Error = SpiErro
 }
 
 // Constants (unchanged)
-const SPI_DMA_GET_REQ_MAGIC: u32 = 0xaeed0000;
-const SPI_DMA_DISCARD_REQ_MAGIC: u32 = 0xdeea0000;
-const SPI_DMA_TRIGGER_LEN: u32 = 128;
+const SPI_DMA_GET_REQ_MAGIC: u32 = 0xaeed_0000;
+const SPI_DMA_DISCARD_REQ_MAGIC: u32 = 0xdeea_0000;
+//const SPI_DMA_TRIGGER_LEN: u32 = 128;
 const SPI_DMA_RAM_MAP_BASE: u32 = 0x8000_0000;
 const SPI_DMA_FLASH_MAP_BASE: u32 = 0x6000_0000;
 const SPI_CTRL_FREQ_MASK: u32 = 0x0F00_0F00;
 
 const SPI_CALIB_LEN: usize = 0x400;
-const SPI_DMA_STS: u32 = 1 << 11;
-const SPI_DMA_IRQ_EN: u32 = 1 << 3;
+//const SPI_DMA_STS: u32 = 1 << 11;
+//const SPI_DMA_IRQ_EN: u32 = 1 << 3;
 const SPI_DMA_REQUEST: u32 = 1 << 31;
 const SPI_DMA_GRANT: u32 = 1 << 30;
 const SPI_DMA_CALIB_MODE: u32 = 1 << 3;
 const SPI_DMA_CALC_CKSUM: u32 = 1 << 2;
-const SPI_DMA_WRITE: u32 = 1 << 1;
+//const SPI_DMA_WRITE: u32 = 1 << 1;
 const SPI_DMA_ENABLE: u32 = 1 << 0;
 const SPI_DMA_STATUS: u32 = 1 << 11;
 
@@ -87,11 +86,11 @@ const ASPEED_SPI_SZ_2M: u32 = 0x0020_0000;
 const ASPEED_SPI_SZ_256M: u32 = 0x1000_0000;
 
 const HPLL_FREQ: u32 = 1_000_000_000;
-const HCLK_DIV_SEL_MASK: u32 = 0b111 << 28;
+//const HCLK_DIV_SEL_MASK: u32 = 0b111 << 28;
 
-const SPI_NOR_DATA_DIRECT_READ: u32 = 0x00000001;
-const SPI_NOR_DATA_DIRECT_WRITE: u32 = 0x00000002;
-const SPI_NOR_MAX_ID_LEN: u32 = 3;
+const SPI_NOR_DATA_DIRECT_READ: u32 = 0x0000_0001;
+const SPI_NOR_DATA_DIRECT_WRITE: u32 = 0x0000_0002;
+//const SPI_NOR_MAX_ID_LEN: u32 = 3;
 
 const SPI_DMA_TIMEOUT: u32 = 0x10000;
 
@@ -216,13 +215,13 @@ pub fn spi_cal_dummy_cycle(bus_width: u32, dummy_cycle: u32) -> u32 {
 }
 
 const fn get_cmd_buswidth(v: u32) -> u8 {
-    ((v & 0x000000F00) >> 8) as u8
+    ((v & 0x0000_0F00) >> 8) as u8
 }
 const fn get_addr_buswidth(v: u32) -> u8 {
-    ((v & 0x0000000F0) >> 4) as u8
+    ((v & 0x0000_00F0) >> 4) as u8
 }
 const fn get_data_buswidth(v: u32) -> u8 {
-    (v & 0x00000000F) as u8
+    (v & 0x0000_000F) as u8
 }
 
 /// Calculate the SPI frequency division setting based on bus clock and max frequency.

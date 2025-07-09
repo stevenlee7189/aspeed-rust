@@ -6,9 +6,7 @@ use crate::{
 use core::fmt::Debug;
 use embedded_hal::delay::DelayNs;
 use proposed_traits::block_device as BD;
-use proposed_traits::block_device::{
-    BlockAddress, BlockDevice, BlockRange, ErrorType,
-};
+use proposed_traits::block_device::{BlockAddress, BlockDevice, BlockRange, ErrorType};
 
 /// Adapter that wraps a SpiNorDevice and implements BlockDevice
 pub struct NorFlashBlockDevice<T: SpiNorDevice> {
@@ -104,13 +102,13 @@ where
             return Err(BlockError::OutOfBounds);
         }
         if self.supports_4byte_addr {
-            if let Err(e) = self
+            if let Err(_e) = self
                 .device
                 .nor_read_fast_4b_data(addr.try_into().unwrap(), data)
             {
                 return Err(BlockError::ReadError);
             }
-        } else if let Err(e) = self.device.nor_read_data(addr.try_into().unwrap(), data) {
+        } else if let Err(_e) = self.device.nor_read_data(addr.try_into().unwrap(), data) {
             return Err(BlockError::ReadError);
         }
 
@@ -129,8 +127,8 @@ where
             return Err(BlockError::OutOfBounds);
         }
 
-        for i in 0..range.count {
-            if let Err(e) = self.device.nor_sector_erase(addr.try_into().unwrap()) {
+        for _i in 0..range.count {
+            if let Err(_e) = self.device.nor_sector_erase(addr.try_into().unwrap()) {
                 return Err(BlockError::EraseError);
             }
             addr += self.erase_size();

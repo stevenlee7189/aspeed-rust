@@ -251,42 +251,42 @@ pub const PIN_SPIM0_CSIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 0,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_CSIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 0,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_CSIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 0,
     clear: false,
-}; 
+};
 pub const PIN_SPIM0_CLKIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 1,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_CLKIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 1,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_CLKIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 1,
     clear: false,
-}; 
+};
 pub const PIN_SPIM0_MOSIIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 2,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_MOSIIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 2,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_MOSIIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 2,
@@ -296,12 +296,12 @@ pub const PIN_SPIM0_MISOIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 3,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_MISOIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 3,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_MISOIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 3,
@@ -311,27 +311,27 @@ pub const PIN_SPIM0_IO2IN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 4,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_IO2IN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 4,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_IO2IN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 4,
     clear: false,
-}; 
+};
 pub const PIN_SPIM0_IO3IN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 5,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_IO3IN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 5,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_IO3IN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 5,
@@ -341,12 +341,12 @@ pub const PIN_SPIM0_CSNOUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 6,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_CSNOUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 6,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_CSNOUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 6,
@@ -356,12 +356,12 @@ pub const PIN_SPIM0_CLKOUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 7,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_CLKOUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 7,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_CLKOUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 7,
@@ -371,12 +371,12 @@ pub const PIN_SPIM0_MOSIOUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 8,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_MOSIOUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 8,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_MOSIOUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 8,
@@ -386,12 +386,12 @@ pub const PIN_SPIM0_MISOOUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 9,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_MISOOUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 9,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_MISOOUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 9,
@@ -401,12 +401,12 @@ pub const PIN_SPIM0_IO2OUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 10,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_IO2OUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 10,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_IO2OUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 10,
@@ -416,12 +416,12 @@ pub const PIN_SPIM0_IO3OUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 11,
     clear: true,
-};  
+};
 pub const PIN_SPIM0_IO3OUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 11,
     clear: true,
-}; 
+};
 pub const PIN_SPIM0_IO3OUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 11,
@@ -482,42 +482,42 @@ pub const PIN_SPIM1_CSIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 14,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_CSIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 14,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_CSIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 14,
     clear: false,
-}; 
+};
 pub const PIN_SPIM1_CLKIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 15,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_CLKIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 15,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_CLKIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 15,
     clear: false,
-}; 
+};
 pub const PIN_SPIM1_MOSIIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 16,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_MOSIIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 16,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_MOSIIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 16,
@@ -527,12 +527,12 @@ pub const PIN_SPIM1_MISOIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 17,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_MISOIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 17,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_MISOIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 17,
@@ -542,27 +542,27 @@ pub const PIN_SPIM1_IO2IN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 18,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_IO2IN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 18,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_IO2IN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 18,
     clear: false,
-}; 
+};
 pub const PIN_SPIM1_IO3IN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 19,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_IO3IN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 19,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_IO3IN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 19,
@@ -572,12 +572,12 @@ pub const PIN_SPIM1_CSNOUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 20,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_CSNOUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 20,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_CSNOUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 20,
@@ -587,12 +587,12 @@ pub const PIN_SPIM1_CLKOUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 21,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_CLKOUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 21,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_CLKOUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 21,
@@ -602,12 +602,12 @@ pub const PIN_SPIM1_MOSIOUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 8,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_MOSIOUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 8,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_MOSIOUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 8,
@@ -617,12 +617,12 @@ pub const PIN_SPIM1_MISOOUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 23,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_MISOOUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 23,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_MISOOUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 23,
@@ -632,12 +632,12 @@ pub const PIN_SPIM1_IO2OUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 24,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_IO2OUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 24,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_IO2OUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 24,
@@ -647,12 +647,12 @@ pub const PIN_SPIM1_IO3OUT_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 25,
     clear: true,
-};  
+};
 pub const PIN_SPIM1_IO3OUT_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 25,
     clear: true,
-}; 
+};
 pub const PIN_SPIM1_IO3OUT_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 25,
@@ -697,42 +697,42 @@ pub const PIN_SPIM2_CSIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 28,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_CSIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 28,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_CSIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 28,
     clear: false,
-}; 
+};
 pub const PIN_SPIM2_CLKIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 29,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_CLKIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 29,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_CLKIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 29,
     clear: false,
-}; 
+};
 pub const PIN_SPIM2_MOSIIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 30,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_MOSIIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 30,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_MOSIIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 30,
@@ -742,12 +742,12 @@ pub const PIN_SPIM2_MISOIN_CTRL1: PinctrlPin = PinctrlPin {
     offset: 0x410,
     bit: 31,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_MISOIN_CTRL13: PinctrlPin = PinctrlPin {
     offset: 0x4B0,
     bit: 31,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_MISOIN_CTRL31: PinctrlPin = PinctrlPin {
     offset: 0x690,
     bit: 31,
@@ -757,27 +757,27 @@ pub const PIN_SPIM2_IO2IN_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 0,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_IO2IN_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 0,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_IO2IN_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 0,
     clear: false,
-}; 
+};
 pub const PIN_SPIM2_IO3IN_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 1,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_IO3IN_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 1,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_IO3IN_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 1,
@@ -787,12 +787,12 @@ pub const PIN_SPIM2_CSNOUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 2,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_CSNOUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 2,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_CSNOUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 2,
@@ -802,12 +802,12 @@ pub const PIN_SPIM2_CLKOUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 3,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_CLKOUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 3,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_CLKOUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 3,
@@ -817,12 +817,12 @@ pub const PIN_SPIM2_MOSIOUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 4,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_MOSIOUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 4,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_MOSIOUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 4,
@@ -832,12 +832,12 @@ pub const PIN_SPIM2_MISOOUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 5,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_MISOOUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 5,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_MISOOUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 5,
@@ -847,12 +847,12 @@ pub const PIN_SPIM2_IO2OUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 6,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_IO2OUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 6,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_IO2OUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 6,
@@ -862,12 +862,12 @@ pub const PIN_SPIM2_IO3OUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 7,
     clear: true,
-};  
+};
 pub const PIN_SPIM2_IO3OUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 7,
     clear: true,
-}; 
+};
 pub const PIN_SPIM2_IO3OUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 7,
@@ -930,42 +930,42 @@ pub const PIN_SPIM3_CSIN_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 10,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_CSIN_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 10,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_CSIN_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 10,
     clear: false,
-}; 
+};
 pub const PIN_SPIM3_CLKIN_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 11,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_CLKIN_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 11,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_CLKIN_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 11,
     clear: false,
-}; 
+};
 pub const PIN_SPIM3_MOSIIN_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 12,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_MOSIIN_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 12,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_MOSIIN_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 12,
@@ -975,12 +975,12 @@ pub const PIN_SPIM3_MISOIN_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 13,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_MISOIN_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 13,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_MISOIN_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 13,
@@ -990,27 +990,27 @@ pub const PIN_SPIM3_IO2IN_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 14,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_IO2IN_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 14,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_IO2IN_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 14,
     clear: false,
-}; 
+};
 pub const PIN_SPIM3_IO3IN_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 15,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_IO3IN_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 15,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_IO3IN_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 15,
@@ -1018,14 +1018,14 @@ pub const PIN_SPIM3_IO3IN_CTRL32: PinctrlPin = PinctrlPin {
 };
 pub const PIN_SPIM3_CSNOUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
-    bit:16,
+    bit: 16,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_CSNOUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 16,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_CSNOUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 16,
@@ -1035,12 +1035,12 @@ pub const PIN_SPIM3_CLKOUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 17,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_CLKOUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 17,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_CLKOUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 17,
@@ -1050,12 +1050,12 @@ pub const PIN_SPIM3_MOSIOUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 18,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_MOSIOUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 18,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_MOSIOUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 18,
@@ -1065,12 +1065,12 @@ pub const PIN_SPIM3_MISOOUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 19,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_MISOOUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 19,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_MISOOUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 19,
@@ -1080,12 +1080,12 @@ pub const PIN_SPIM3_IO2OUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 20,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_IO2OUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 20,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_IO2OUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 20,
@@ -1095,12 +1095,12 @@ pub const PIN_SPIM3_IO3OUT_CTRL2: PinctrlPin = PinctrlPin {
     offset: 0x414,
     bit: 21,
     clear: true,
-};  
+};
 pub const PIN_SPIM3_IO3OUT_CTRL14: PinctrlPin = PinctrlPin {
     offset: 0x4B4,
     bit: 21,
     clear: true,
-}; 
+};
 pub const PIN_SPIM3_IO3OUT_CTRL32: PinctrlPin = PinctrlPin {
     offset: 0x694,
     bit: 21,
@@ -1160,92 +1160,204 @@ pub const PINCTRL_SPI2_QUAD: &[PinctrlPin] = &[
     PIN_SPI2DQ2,
     PIN_SPI2DQ3,
 ];
-pub const PINCTRL_SPIM0_MUXSEL: &[PinctrlPin] = & [
+pub const PINCTRL_SPIM0_MUXSEL: &[PinctrlPin] = &[
     PIN_SPIM0_MUX_CTRL1,
     PIN_SPIM0_MUX_CTRL13,
     PIN_SPIM0_MUX_CTRL31,
 ];
-pub const PINCTRL_SPIM1_MUXSEL: &[PinctrlPin] = & [
+pub const PINCTRL_SPIM1_MUXSEL: &[PinctrlPin] = &[
     PIN_SPIM1_MUX_CTRL1,
     PIN_SPIM1_MUX_CTRL13,
     PIN_SPIM1_MUX_CTRL31,
 ];
-pub const PINCTRL_SPIM2_MUXSEL: &[PinctrlPin] = & [
+pub const PINCTRL_SPIM2_MUXSEL: &[PinctrlPin] = &[
     PIN_SPIM2_MUX_CTRL2,
     PIN_SPIM2_MUX_CTRL14,
     PIN_SPIM2_MUX_CTRL32,
 ];
-pub const PINCTRL_SPIM3_MUXSEL: &[PinctrlPin] = & [
+pub const PINCTRL_SPIM3_MUXSEL: &[PinctrlPin] = &[
     PIN_SPIM3_MUX_CTRL2,
     PIN_SPIM3_MUX_CTRL14,
     PIN_SPIM3_MUX_CTRL32,
 ];
 
 pub const PINCTRL_SPIM0_QUAD_DEFAULT: &[PinctrlPin] = &[
-    PIN_SPIM0_CSIN_CTRL1, PIN_SPIM0_CSIN_CTRL13, PIN_SPIM0_CSIN_CTRL31,
-    PIN_SPIM0_CLKIN_CTRL1,PIN_SPIM0_CLKIN_CTRL13,PIN_SPIM0_CLKIN_CTRL31,
-    PIN_SPIM0_MOSIIN_CTRL1,PIN_SPIM0_MOSIIN_CTRL13,PIN_SPIM0_MOSIIN_CTRL31,
-    PIN_SPIM0_MISOIN_CTRL1,PIN_SPIM0_MISOIN_CTRL13,PIN_SPIM0_MISOIN_CTRL31,
-    PIN_SPIM0_IO2IN_CTRL1,PIN_SPIM0_IO2IN_CTRL13,PIN_SPIM0_IO2IN_CTRL31,
-    PIN_SPIM0_IO3IN_CTRL1,PIN_SPIM0_IO3IN_CTRL13,PIN_SPIM0_IO3IN_CTRL31,
-    PIN_SPIM0_CSNOUT_CTRL1,PIN_SPIM0_CSNOUT_CTRL13,PIN_SPIM0_CSNOUT_CTRL31,
-    PIN_SPIM0_CLKOUT_CTRL1,PIN_SPIM0_CLKOUT_CTRL13,PIN_SPIM0_CLKOUT_CTRL31,
-    PIN_SPIM0_MOSIOUT_CTRL1,PIN_SPIM0_MOSIOUT_CTRL13,PIN_SPIM0_MOSIOUT_CTRL31,
-    PIN_SPIM0_MISOOUT_CTRL1,PIN_SPIM0_MISOOUT_CTRL13,PIN_SPIM0_MISOOUT_CTRL31,
-    PIN_SPIM0_IO2OUT_CTRL1,PIN_SPIM0_IO2OUT_CTRL13,PIN_SPIM0_IO2OUT_CTRL31,
-    PIN_SPIM0_IO3OUT_CTRL1,PIN_SPIM0_IO3OUT_CTRL13,PIN_SPIM0_IO3OUT_CTRL31,
-    PIN_SPIM0_MUX_CTRL1,PIN_SPIM0_MUX_CTRL13,PIN_SPIM0_MUX_CTRL31,
-    PIN_SPIM0_RSTOUT_CTRL1,PIN_SPIM0_RSTOUT_CTRL13,PIN_SPIM0_RSTOUT_CTRL31,
-    PIN_SPIM0_RSTIN_CTRL2,PIN_SPIM0_RSTIN_CTRL14,PIN_SPIM0_RSTIN_CTRL32,
+    PIN_SPIM0_CSIN_CTRL1,
+    PIN_SPIM0_CSIN_CTRL13,
+    PIN_SPIM0_CSIN_CTRL31,
+    PIN_SPIM0_CLKIN_CTRL1,
+    PIN_SPIM0_CLKIN_CTRL13,
+    PIN_SPIM0_CLKIN_CTRL31,
+    PIN_SPIM0_MOSIIN_CTRL1,
+    PIN_SPIM0_MOSIIN_CTRL13,
+    PIN_SPIM0_MOSIIN_CTRL31,
+    PIN_SPIM0_MISOIN_CTRL1,
+    PIN_SPIM0_MISOIN_CTRL13,
+    PIN_SPIM0_MISOIN_CTRL31,
+    PIN_SPIM0_IO2IN_CTRL1,
+    PIN_SPIM0_IO2IN_CTRL13,
+    PIN_SPIM0_IO2IN_CTRL31,
+    PIN_SPIM0_IO3IN_CTRL1,
+    PIN_SPIM0_IO3IN_CTRL13,
+    PIN_SPIM0_IO3IN_CTRL31,
+    PIN_SPIM0_CSNOUT_CTRL1,
+    PIN_SPIM0_CSNOUT_CTRL13,
+    PIN_SPIM0_CSNOUT_CTRL31,
+    PIN_SPIM0_CLKOUT_CTRL1,
+    PIN_SPIM0_CLKOUT_CTRL13,
+    PIN_SPIM0_CLKOUT_CTRL31,
+    PIN_SPIM0_MOSIOUT_CTRL1,
+    PIN_SPIM0_MOSIOUT_CTRL13,
+    PIN_SPIM0_MOSIOUT_CTRL31,
+    PIN_SPIM0_MISOOUT_CTRL1,
+    PIN_SPIM0_MISOOUT_CTRL13,
+    PIN_SPIM0_MISOOUT_CTRL31,
+    PIN_SPIM0_IO2OUT_CTRL1,
+    PIN_SPIM0_IO2OUT_CTRL13,
+    PIN_SPIM0_IO2OUT_CTRL31,
+    PIN_SPIM0_IO3OUT_CTRL1,
+    PIN_SPIM0_IO3OUT_CTRL13,
+    PIN_SPIM0_IO3OUT_CTRL31,
+    PIN_SPIM0_MUX_CTRL1,
+    PIN_SPIM0_MUX_CTRL13,
+    PIN_SPIM0_MUX_CTRL31,
+    PIN_SPIM0_RSTOUT_CTRL1,
+    PIN_SPIM0_RSTOUT_CTRL13,
+    PIN_SPIM0_RSTOUT_CTRL31,
+    PIN_SPIM0_RSTIN_CTRL2,
+    PIN_SPIM0_RSTIN_CTRL14,
+    PIN_SPIM0_RSTIN_CTRL32,
 ];
 pub const PINCTRL_SPIM2_QUAD_DEFAULT: &[PinctrlPin] = &[
-    PIN_SPIM2_CSIN_CTRL1, PIN_SPIM2_CSIN_CTRL13, PIN_SPIM2_CSIN_CTRL31,
-    PIN_SPIM2_CLKIN_CTRL1,PIN_SPIM2_CLKIN_CTRL13,PIN_SPIM2_CLKIN_CTRL31,
-    PIN_SPIM2_MOSIIN_CTRL1,PIN_SPIM2_MOSIIN_CTRL13,PIN_SPIM2_MOSIIN_CTRL31,
-    PIN_SPIM2_MISOIN_CTRL1,PIN_SPIM2_MISOIN_CTRL13,PIN_SPIM2_MISOIN_CTRL31,
-    PIN_SPIM2_IO2IN_CTRL2,PIN_SPIM2_IO2IN_CTRL14,PIN_SPIM2_IO2IN_CTRL32,
-    PIN_SPIM2_IO3IN_CTRL2,PIN_SPIM2_IO3IN_CTRL14,PIN_SPIM2_IO3IN_CTRL32,
-    PIN_SPIM2_CSNOUT_CTRL2,PIN_SPIM2_CSNOUT_CTRL14,PIN_SPIM2_CSNOUT_CTRL32,
-    PIN_SPIM2_CLKOUT_CTRL2,PIN_SPIM2_CLKOUT_CTRL14,PIN_SPIM2_CLKOUT_CTRL32,
-    PIN_SPIM2_MOSIOUT_CTRL2,PIN_SPIM2_MOSIOUT_CTRL14,PIN_SPIM2_MOSIOUT_CTRL32,
-    PIN_SPIM2_MISOOUT_CTRL2,PIN_SPIM2_MISOOUT_CTRL14,PIN_SPIM2_MISOOUT_CTRL32,
-    PIN_SPIM2_IO2OUT_CTRL2,PIN_SPIM2_IO2OUT_CTRL14,PIN_SPIM2_IO2OUT_CTRL32,
-    PIN_SPIM2_IO3OUT_CTRL2,PIN_SPIM2_IO3OUT_CTRL14,PIN_SPIM2_IO3OUT_CTRL32,
-    PIN_SPIM2_MUX_CTRL2,PIN_SPIM2_MUX_CTRL14,PIN_SPIM2_MUX_CTRL32,
-    PIN_SPIM2_RSTOUT_CTRL2,PIN_SPIM2_RSTOUT_CTRL14,PIN_SPIM2_RSTOUT_CTRL32,
-    PIN_SPIM2_RSTIN_CTRL2,PIN_SPIM2_RSTIN_CTRL14,PIN_SPIM2_RSTIN_CTRL32,
+    PIN_SPIM2_CSIN_CTRL1,
+    PIN_SPIM2_CSIN_CTRL13,
+    PIN_SPIM2_CSIN_CTRL31,
+    PIN_SPIM2_CLKIN_CTRL1,
+    PIN_SPIM2_CLKIN_CTRL13,
+    PIN_SPIM2_CLKIN_CTRL31,
+    PIN_SPIM2_MOSIIN_CTRL1,
+    PIN_SPIM2_MOSIIN_CTRL13,
+    PIN_SPIM2_MOSIIN_CTRL31,
+    PIN_SPIM2_MISOIN_CTRL1,
+    PIN_SPIM2_MISOIN_CTRL13,
+    PIN_SPIM2_MISOIN_CTRL31,
+    PIN_SPIM2_IO2IN_CTRL2,
+    PIN_SPIM2_IO2IN_CTRL14,
+    PIN_SPIM2_IO2IN_CTRL32,
+    PIN_SPIM2_IO3IN_CTRL2,
+    PIN_SPIM2_IO3IN_CTRL14,
+    PIN_SPIM2_IO3IN_CTRL32,
+    PIN_SPIM2_CSNOUT_CTRL2,
+    PIN_SPIM2_CSNOUT_CTRL14,
+    PIN_SPIM2_CSNOUT_CTRL32,
+    PIN_SPIM2_CLKOUT_CTRL2,
+    PIN_SPIM2_CLKOUT_CTRL14,
+    PIN_SPIM2_CLKOUT_CTRL32,
+    PIN_SPIM2_MOSIOUT_CTRL2,
+    PIN_SPIM2_MOSIOUT_CTRL14,
+    PIN_SPIM2_MOSIOUT_CTRL32,
+    PIN_SPIM2_MISOOUT_CTRL2,
+    PIN_SPIM2_MISOOUT_CTRL14,
+    PIN_SPIM2_MISOOUT_CTRL32,
+    PIN_SPIM2_IO2OUT_CTRL2,
+    PIN_SPIM2_IO2OUT_CTRL14,
+    PIN_SPIM2_IO2OUT_CTRL32,
+    PIN_SPIM2_IO3OUT_CTRL2,
+    PIN_SPIM2_IO3OUT_CTRL14,
+    PIN_SPIM2_IO3OUT_CTRL32,
+    PIN_SPIM2_MUX_CTRL2,
+    PIN_SPIM2_MUX_CTRL14,
+    PIN_SPIM2_MUX_CTRL32,
+    PIN_SPIM2_RSTOUT_CTRL2,
+    PIN_SPIM2_RSTOUT_CTRL14,
+    PIN_SPIM2_RSTOUT_CTRL32,
+    PIN_SPIM2_RSTIN_CTRL2,
+    PIN_SPIM2_RSTIN_CTRL14,
+    PIN_SPIM2_RSTIN_CTRL32,
 ];
 
 pub const PINCTRL_SPIM2_PINCTRL0: &[PinctrlPin] = &[
-    PIN_SPIM2_CSIN_CTRL1, PIN_SPIM2_CSIN_CTRL13, PIN_SPIM2_CSIN_CTRL31,
-    PIN_SPIM2_CLKIN_CTRL1,PIN_SPIM2_CLKIN_CTRL13,PIN_SPIM2_CLKIN_CTRL31,
-    PIN_SPIM2_MOSIIN_CTRL1,PIN_SPIM2_MOSIIN_CTRL13,PIN_SPIM2_MOSIIN_CTRL31,
-    PIN_SPIM2_MISOIN_CTRL1,PIN_SPIM2_MISOIN_CTRL13,PIN_SPIM2_MISOIN_CTRL31,
-    PIN_SPIM2_IO2IN_CTRL2,PIN_SPIM2_IO2IN_CTRL14,PIN_SPIM2_IO2IN_CTRL32,
-    PIN_SPIM2_IO3IN_CTRL2,PIN_SPIM2_IO3IN_CTRL14,PIN_SPIM2_IO3IN_CTRL32,
-    PIN_SPIM2_CSNOUT_CTRL2,PIN_SPIM2_CSNOUT_CTRL14,PIN_SPIM2_CSNOUT_CTRL32,
-    PIN_SPIM2_CLKOUT_CTRL2,PIN_SPIM2_CLKOUT_CTRL14,PIN_SPIM2_CLKOUT_CTRL32,
-    PIN_SPIM2_MOSIOUT_CTRL2,PIN_SPIM2_MOSIOUT_CTRL14,PIN_SPIM2_MOSIOUT_CTRL32,
-    PIN_SPIM2_MISOOUT_CTRL2,PIN_SPIM2_MISOOUT_CTRL14,PIN_SPIM2_MISOOUT_CTRL32,
-    PIN_SPIM2_IO2OUT_CTRL2,PIN_SPIM2_IO2OUT_CTRL14,PIN_SPIM2_IO2OUT_CTRL32,
-    PIN_SPIM2_IO3OUT_CTRL2,PIN_SPIM2_IO3OUT_CTRL14,PIN_SPIM2_IO3OUT_CTRL32,
-    PIN_SPIM2_MUX_CTRL2,PIN_SPIM2_MUX_CTRL14,PIN_SPIM2_MUX_CTRL32,
+    PIN_SPIM2_CSIN_CTRL1,
+    PIN_SPIM2_CSIN_CTRL13,
+    PIN_SPIM2_CSIN_CTRL31,
+    PIN_SPIM2_CLKIN_CTRL1,
+    PIN_SPIM2_CLKIN_CTRL13,
+    PIN_SPIM2_CLKIN_CTRL31,
+    PIN_SPIM2_MOSIIN_CTRL1,
+    PIN_SPIM2_MOSIIN_CTRL13,
+    PIN_SPIM2_MOSIIN_CTRL31,
+    PIN_SPIM2_MISOIN_CTRL1,
+    PIN_SPIM2_MISOIN_CTRL13,
+    PIN_SPIM2_MISOIN_CTRL31,
+    PIN_SPIM2_IO2IN_CTRL2,
+    PIN_SPIM2_IO2IN_CTRL14,
+    PIN_SPIM2_IO2IN_CTRL32,
+    PIN_SPIM2_IO3IN_CTRL2,
+    PIN_SPIM2_IO3IN_CTRL14,
+    PIN_SPIM2_IO3IN_CTRL32,
+    PIN_SPIM2_CSNOUT_CTRL2,
+    PIN_SPIM2_CSNOUT_CTRL14,
+    PIN_SPIM2_CSNOUT_CTRL32,
+    PIN_SPIM2_CLKOUT_CTRL2,
+    PIN_SPIM2_CLKOUT_CTRL14,
+    PIN_SPIM2_CLKOUT_CTRL32,
+    PIN_SPIM2_MOSIOUT_CTRL2,
+    PIN_SPIM2_MOSIOUT_CTRL14,
+    PIN_SPIM2_MOSIOUT_CTRL32,
+    PIN_SPIM2_MISOOUT_CTRL2,
+    PIN_SPIM2_MISOOUT_CTRL14,
+    PIN_SPIM2_MISOOUT_CTRL32,
+    PIN_SPIM2_IO2OUT_CTRL2,
+    PIN_SPIM2_IO2OUT_CTRL14,
+    PIN_SPIM2_IO2OUT_CTRL32,
+    PIN_SPIM2_IO3OUT_CTRL2,
+    PIN_SPIM2_IO3OUT_CTRL14,
+    PIN_SPIM2_IO3OUT_CTRL32,
+    PIN_SPIM2_MUX_CTRL2,
+    PIN_SPIM2_MUX_CTRL14,
+    PIN_SPIM2_MUX_CTRL32,
 ];
 
 pub const PINCTRL_SPIM3_PINCTRL0: &[PinctrlPin] = &[
-    PIN_SPIM3_CSIN_CTRL2, PIN_SPIM3_CSIN_CTRL14, PIN_SPIM3_CSIN_CTRL32,
-    PIN_SPIM3_CLKIN_CTRL2,PIN_SPIM3_CLKIN_CTRL14,PIN_SPIM3_CLKIN_CTRL32,
-    PIN_SPIM3_MOSIIN_CTRL2,PIN_SPIM3_MOSIIN_CTRL14,PIN_SPIM3_MOSIIN_CTRL32,
-    PIN_SPIM3_MISOIN_CTRL2,PIN_SPIM3_MISOIN_CTRL14,PIN_SPIM3_MISOIN_CTRL32,
-    PIN_SPIM3_IO2IN_CTRL2,PIN_SPIM3_IO2IN_CTRL14,PIN_SPIM3_IO2IN_CTRL32,
-    PIN_SPIM3_IO3IN_CTRL2,PIN_SPIM3_IO3IN_CTRL14,PIN_SPIM3_IO3IN_CTRL32,
-    PIN_SPIM3_CSNOUT_CTRL2,PIN_SPIM3_CSNOUT_CTRL14,PIN_SPIM3_CSNOUT_CTRL32,
-    PIN_SPIM3_CLKOUT_CTRL2,PIN_SPIM3_CLKOUT_CTRL14,PIN_SPIM3_CLKOUT_CTRL32,
-    PIN_SPIM3_MOSIOUT_CTRL2,PIN_SPIM3_MOSIOUT_CTRL14,PIN_SPIM3_MOSIOUT_CTRL32,
-    PIN_SPIM3_MISOOUT_CTRL2,PIN_SPIM3_MISOOUT_CTRL14,PIN_SPIM3_MISOOUT_CTRL32,
-    PIN_SPIM3_IO2OUT_CTRL2,PIN_SPIM3_IO2OUT_CTRL14,PIN_SPIM3_IO2OUT_CTRL32,
-    PIN_SPIM3_IO3OUT_CTRL2,PIN_SPIM3_IO3OUT_CTRL14,PIN_SPIM3_IO3OUT_CTRL32,
-    PIN_SPIM3_MUX_CTRL2,PIN_SPIM3_MUX_CTRL14,PIN_SPIM3_MUX_CTRL32,
+    PIN_SPIM3_CSIN_CTRL2,
+    PIN_SPIM3_CSIN_CTRL14,
+    PIN_SPIM3_CSIN_CTRL32,
+    PIN_SPIM3_CLKIN_CTRL2,
+    PIN_SPIM3_CLKIN_CTRL14,
+    PIN_SPIM3_CLKIN_CTRL32,
+    PIN_SPIM3_MOSIIN_CTRL2,
+    PIN_SPIM3_MOSIIN_CTRL14,
+    PIN_SPIM3_MOSIIN_CTRL32,
+    PIN_SPIM3_MISOIN_CTRL2,
+    PIN_SPIM3_MISOIN_CTRL14,
+    PIN_SPIM3_MISOIN_CTRL32,
+    PIN_SPIM3_IO2IN_CTRL2,
+    PIN_SPIM3_IO2IN_CTRL14,
+    PIN_SPIM3_IO2IN_CTRL32,
+    PIN_SPIM3_IO3IN_CTRL2,
+    PIN_SPIM3_IO3IN_CTRL14,
+    PIN_SPIM3_IO3IN_CTRL32,
+    PIN_SPIM3_CSNOUT_CTRL2,
+    PIN_SPIM3_CSNOUT_CTRL14,
+    PIN_SPIM3_CSNOUT_CTRL32,
+    PIN_SPIM3_CLKOUT_CTRL2,
+    PIN_SPIM3_CLKOUT_CTRL14,
+    PIN_SPIM3_CLKOUT_CTRL32,
+    PIN_SPIM3_MOSIOUT_CTRL2,
+    PIN_SPIM3_MOSIOUT_CTRL14,
+    PIN_SPIM3_MOSIOUT_CTRL32,
+    PIN_SPIM3_MISOOUT_CTRL2,
+    PIN_SPIM3_MISOOUT_CTRL14,
+    PIN_SPIM3_MISOOUT_CTRL32,
+    PIN_SPIM3_IO2OUT_CTRL2,
+    PIN_SPIM3_IO2OUT_CTRL14,
+    PIN_SPIM3_IO2OUT_CTRL32,
+    PIN_SPIM3_IO3OUT_CTRL2,
+    PIN_SPIM3_IO3OUT_CTRL14,
+    PIN_SPIM3_IO3OUT_CTRL32,
+    PIN_SPIM3_MUX_CTRL2,
+    PIN_SPIM3_MUX_CTRL14,
+    PIN_SPIM3_MUX_CTRL32,
 ];
 pub const PINCTRL_I2C0: &[PinctrlPin] = &[PIN_SCL0, PIN_SDA0];
 pub const PINCTRL_I2C1: &[PinctrlPin] = &[PIN_SCL1, PIN_SDA1];
@@ -1257,30 +1369,14 @@ pub const PINCTRL_I2C6: &[PinctrlPin] = &[PIN_SCL6, PIN_SDA6];
 pub const PINCTRL_I2C7: &[PinctrlPin] = &[PIN_SCL7, PIN_SDA7];
 pub const PINCTRL_I2C8: &[PinctrlPin] = &[PIN_SCL8, PIN_SDA8];
 pub const PINCTRL_I2C9: &[PinctrlPin] = &[PIN_SCL9, PIN_SDA9];
-pub const PINCTRL_I2C10: &[PinctrlPin] = &[
-    PIN_SCL10, 
-    PIN_SDA10,
-    CLR_PIN_I3C_SCL0,
-    CLR_PIN_I3C_SDA0,
-];
-pub const PINCTRL_I2C11: &[PinctrlPin] = &[
-    PIN_SCL11, 
-    PIN_SDA11,
-    CLR_PIN_I3C_SCL1,
-    CLR_PIN_I3C_SDA1,
-];
-pub const PINCTRL_I2C12: &[PinctrlPin] = &[
-    PIN_SCL12, 
-    PIN_SDA12,
-    CLR_PIN_I3C_SCL2,
-    CLR_PIN_I3C_SDA2,
-];
-pub const PINCTRL_I2C13: &[PinctrlPin] = &[
-    PIN_SCL13, 
-    PIN_SDA13,
-    CLR_PIN_I3C_SCL3,
-    CLR_PIN_I3C_SDA3,
-];
+pub const PINCTRL_I2C10: &[PinctrlPin] =
+    &[PIN_SCL10, PIN_SDA10, CLR_PIN_I3C_SCL0, CLR_PIN_I3C_SDA0];
+pub const PINCTRL_I2C11: &[PinctrlPin] =
+    &[PIN_SCL11, PIN_SDA11, CLR_PIN_I3C_SCL1, CLR_PIN_I3C_SDA1];
+pub const PINCTRL_I2C12: &[PinctrlPin] =
+    &[PIN_SCL12, PIN_SDA12, CLR_PIN_I3C_SCL2, CLR_PIN_I3C_SDA2];
+pub const PINCTRL_I2C13: &[PinctrlPin] =
+    &[PIN_SCL13, PIN_SDA13, CLR_PIN_I3C_SCL3, CLR_PIN_I3C_SDA3];
 #[macro_export]
 macro_rules! modify_reg {
     ($reg:expr, $bit:expr, $clear:expr) => {{

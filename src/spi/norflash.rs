@@ -69,21 +69,21 @@ pub const SPI_NOR_SECTOR_SIZE: usize = 4096;
 
 #[derive(Clone, Copy)]
 pub enum Jesd216Mode {
-    Mode044 = 0x00000044, /* implied instruction, execute in place */
-    Mode088 = 0x00000088,
-    Mode111 = 0x00000111,
-    Mode111Fast = 0x10000111,
-    Mode112 = 0x00000112,
-    Mode114 = 0x00000114,
-    Mode118 = 0x00000118,
-    Mode122 = 0x00000122,
-    Mode144 = 0x00000144,
-    Mode188 = 0x00000188,
-    Mode222 = 0x00000222,
-    Mode444 = 0x00000444,
-    Mode888 = 0x00000888,
-    Mode44D4D = 0x20000444,
-    Mode8D8D8D = 0x20000888,
+    Mode044 = 0x0000_0044, /* implied instruction, execute in place */
+    Mode088 = 0x0000_0088,
+    Mode111 = 0x0000_0111,
+    Mode111Fast = 0x1000_0111,
+    Mode112 = 0x0000_0112,
+    Mode114 = 0x0000_0114,
+    Mode118 = 0x0000_0118,
+    Mode122 = 0x0000_0122,
+    Mode144 = 0x0000_0144,
+    Mode188 = 0x0000_0188,
+    Mode222 = 0x0000_0222,
+    Mode444 = 0x0000_0444,
+    Mode888 = 0x0000_0888,
+    Mode44D4D = 0x2000_0444,
+    Mode8D8D8D = 0x2000_0888,
     Unknown = 0xFFF_FFFF,
 }
 

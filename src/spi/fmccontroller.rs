@@ -1,4 +1,14 @@
-use super::*;
+use super::{
+    aspeed_get_spi_freq_div, get_addr_buswidth, get_hclock_rate, get_mid_point_of_longest_one,
+    spi_cal_dummy_cycle, spi_calibration_enable, spi_io_mode, spi_io_mode_user, spi_read_data,
+    spi_write_data, CtrlType, SpiBusWithCs, SpiConfig, SpiData, SpiError, Write, ASPEED_MAX_CS,
+    ASPEED_SPI_NORMAL_READ, ASPEED_SPI_NORMAL_WRITE, ASPEED_SPI_SZ_256M, ASPEED_SPI_SZ_2M,
+    ASPEED_SPI_USER, ASPEED_SPI_USER_INACTIVE, SPI_CALIB_LEN, SPI_CTRL_FREQ_MASK,
+    SPI_DMA_CALC_CKSUM, SPI_DMA_CALIB_MODE, SPI_DMA_DISCARD_REQ_MAGIC, SPI_DMA_ENABLE,
+    SPI_DMA_FLASH_MAP_BASE, SPI_DMA_GET_REQ_MAGIC, SPI_DMA_GRANT, SPI_DMA_RAM_MAP_BASE,
+    SPI_DMA_REQUEST, SPI_DMA_STATUS, SPI_DMA_TIMEOUT,
+};
+
 use crate::dbg;
 use crate::{common::DummyDelay, spi::norflash::SpiNorData, uart::UartController};
 use embedded_hal::{
@@ -81,7 +91,7 @@ impl<'a> FmcController<'a> {
         dbg!(self, "rang pre - init()");
 
         if self.spi_config.pure_spi_mode_only {
-            unit_sz = ASPEED_SPI_SZ_256M / self.spi_config.max_cs as u32;
+            unit_sz = ASPEED_SPI_SZ_256M / u32::try_from(self.spi_config.max_cs).unwrap();
             unit_sz &= !(ASPEED_SPI_SZ_2M - 1);
         }
 
@@ -116,14 +126,14 @@ impl<'a> FmcController<'a> {
         }
     }
 
-    fn segment_start(&self, reg_val: u32) -> u32 {
+    fn segment_start(&mut self, reg_val: u32) -> u32 {
         (reg_val & 0x0ff8) << 16
     }
-    fn segment_end(&self, reg_val: u32) -> u32 {
-        (reg_val & 0x0ff80000) | 0x0007_ffff
+    fn segment_end(&mut self, reg_val: u32) -> u32 {
+        (reg_val & 0x0ff8_0000) | 0x0007_ffff
     }
-    fn segment_compose(&self, start: u32, end: u32) -> u32 {
-        ((((start >> 19) << 19) >> 16) & 0xfff8) | (((end >> 19) << 19) & 0xfff80000)
+    fn segment_compose(&mut self, start: u32, end: u32) -> u32 {
+        ((((start >> 19) << 19) >> 16) & 0xfff8) | (((end >> 19) << 19) & 0xfff8_0000)
     }
 
     fn decode_range_reinit(&mut self, flash_sz: u32) {
@@ -202,11 +212,11 @@ impl<'a> FmcController<'a> {
         }
         let io_mode = spi_io_mode(op_info.mode);
         let dummy = spi_cal_dummy_cycle(
-            get_addr_buswidth(op_info.mode as u32) as u32,
+            get_addr_buswidth(op_info.mode as u32).into(),
             op_info.dummy_cycle,
         );
-        let read_cmd = (io_mode | ((op_info.opcode & 0xff) << 16) | (dummy as u32))
-            | ASPEED_SPI_NORMAL_READ;
+        let read_cmd =
+            (io_mode | ((op_info.opcode & 0xff) << 16) | (dummy as u32)) | ASPEED_SPI_NORMAL_READ;
         self.spi_data.cmd_mode[cs].normal_read = read_cmd;
         dbg!(
             self,
@@ -305,15 +315,14 @@ impl<'a> FmcController<'a> {
 
         let hclk_masks = [7u32, 14, 6, 13];
 
-        let mut final_delay: u32 = 0;
         let mut freq_to_use = max_freq;
 
         'outer: for (i, &mask) in hclk_masks.iter().enumerate() {
-            if freq_to_use < self.spi_data.hclk / (i as u32 + 2) {
+            if freq_to_use < self.spi_data.hclk / (u32::try_from(i).unwrap() + 2) {
                 //log::debug!("Skipping frequency {}", self.spi_data.hclk / (i as u32 + 2));
                 continue;
             }
-            freq_to_use = self.spi_data.hclk / (i as u32 + 2);
+            freq_to_use = self.spi_data.hclk / (u32::try_from(i).unwrap() + 2);
 
             let checksum = self.aspeed_spi_dma_checksum(mask, 0);
             let pass = checksum == gold_checksum;
@@ -334,7 +343,7 @@ impl<'a> FmcController<'a> {
                     let checksum = self.aspeed_spi_dma_checksum(mask, reg_val);
                     let pass = checksum == gold_checksum;
                     let index = (hcycle * 17 + delay_ns) as usize;
-                    calib_res[index] = pass as u8;
+                    calib_res[index] = u8::from(pass);
                     dbg!(
                         self,
                         "HCLK/{}, {} HCLK cycle, {} delay_ns : {}",
@@ -351,11 +360,11 @@ impl<'a> FmcController<'a> {
                 dbg!(self, "Cannot get good calibration point.");
                 continue;
             }
-            let hcycle: u32 = (calib_point / 17) as u32;
-            let delay_ns: u32 = (calib_point % 17) as u32;
+            let hcycle: u32 = (calib_point / 17).try_into().unwrap();
+            let delay_ns: u32 = (calib_point % 17).try_into().unwrap();
 
             dbg!(self, "Final hcycle: {}, delay_ns: {}", hcycle, delay_ns);
-            final_delay = ((1 << 3) | hcycle | (delay_ns << 4)) << (i * 8);
+            let final_delay = ((1 << 3) | hcycle | (delay_ns << 4)) << (i * 8);
             self.regs.fmc084().write(|w| unsafe { w.bits(final_delay) });
             break 'outer;
         }
@@ -398,7 +407,7 @@ impl<'a> FmcController<'a> {
             .fmc080()
             .write(|w| unsafe { w.bits(SPI_DMA_GET_REQ_MAGIC) });
         if self.regs.fmc080().read().bits() & SPI_DMA_REQUEST != 0 {
-            while self.regs.fmc080().read().bits() & &SPI_DMA_GRANT == 0 {}
+            while self.regs.fmc080().read().bits() & SPI_DMA_GRANT == 0 {}
         }
 
         // Set DMA flash start address
@@ -407,7 +416,7 @@ impl<'a> FmcController<'a> {
         // Set DMA length
         self.regs
             .fmc08c()
-            .write(|w| unsafe { w.bits(SPI_CALIB_LEN as u32) });
+            .write(|w| unsafe { w.bits(u32::try_from(SPI_CALIB_LEN).unwrap()) });
         // Configure DMA control register
         let ctrl_val = SPI_DMA_ENABLE
             | SPI_DMA_CALC_CKSUM
@@ -433,20 +442,20 @@ impl<'a> FmcController<'a> {
         dbg!(
             self,
             "nor_transceive_user cs: {}, ahb start: {:08x}",
-            cs as u32,
+            u32::try_from(cs).unwrap(),
             self.spi_data.decode_addr[cs].start
         );
 
         // Send command
         let cmd_mode = self.spi_data.cmd_mode[cs].user
-            | super::spi_io_mode_user(super::get_cmd_buswidth(op_info.mode as u32) as u32);
+            | super::spi_io_mode_user(u32::from(super::get_cmd_buswidth(op_info.mode as u32)));
         cs_ctrlreg_w!(self, cs, cmd_mode);
         dbg!(self, "write opcode/cmd: 0x{:08x}", op_info.opcode);
         unsafe { super::spi_write_data(start_ptr, &[op_info.opcode.try_into().unwrap()]) };
 
         // Send address
         let addr_mode = self.spi_data.cmd_mode[cs].user
-            | super::spi_io_mode_user(super::get_addr_buswidth(op_info.mode as u32) as u32);
+            | super::spi_io_mode_user(u32::from(super::get_addr_buswidth(op_info.mode as u32)));
         cs_ctrlreg_w!(self, cs, addr_mode);
 
         let mut addr = op_info.addr;
@@ -459,7 +468,7 @@ impl<'a> FmcController<'a> {
 
         // Dummy cycles
         let bus_width: u8 = super::get_addr_buswidth(op_info.mode as u32);
-        let dummy_len: u8 = (op_info.dummy_cycle / (8 / bus_width as u32))
+        let dummy_len: u8 = (op_info.dummy_cycle / (8 / u32::from(bus_width)))
             .try_into()
             .unwrap();
         dbg!(self, "write dummy len: 0x{:08x}", dummy_len);
@@ -467,15 +476,16 @@ impl<'a> FmcController<'a> {
 
         // Data transfer
         let data_mode = self.spi_data.cmd_mode[cs].user
-            | spi_io_mode_user(super::get_data_buswidth(op_info.mode as u32) as u32);
+            | spi_io_mode_user(u32::from(super::get_data_buswidth(op_info.mode as u32)));
         cs_ctrlreg_w!(self, cs, data_mode);
 
         if op_info.data_direct == super::SPI_NOR_DATA_DIRECT_READ {
             unsafe { spi_read_data(start_ptr, op_info.rx_buf) };
+            Ok(())
         } else {
             unsafe { spi_write_data(start_ptr, op_info.tx_buf) };
+            Ok(())
         }
-        Ok(())
     }
 
     // Helper wrappers would be defined for spi_write_data, spi_read_data, io_mode_user, etc.
@@ -560,6 +570,7 @@ impl<'a> FmcController<'a> {
         self.dma_disable();
         Ok(())
     }
+    /*
     fn dma_irq_disable(&mut self) {
         // Enable the DMA interrupt bit (bit 3)
         self.regs.fmc008().modify(|_, w| w.dmaintenbl().clear_bit());
@@ -575,6 +586,7 @@ impl<'a> FmcController<'a> {
         dbg!(self, "reg 0x88: {:08x}", self.regs.fmc088().read().bits());
         dbg!(self, "reg 0x8c: {:08x}", self.regs.fmc08c().read().bits());
     }
+    */
     pub fn read_dma(&mut self, op: &mut SpiNorData) -> Result<(), SpiError> {
         let cs = self.current_cs;
         dbg!(self, "##### read dma ####");
@@ -601,7 +613,7 @@ impl<'a> FmcController<'a> {
 
         // Calculate dummy cycle bits
         let bus_width = get_addr_buswidth(op.mode as u32);
-        let dummy = (op.dummy_cycle / (8 / bus_width) as u32) << 6;
+        let dummy = (op.dummy_cycle / u32::from(8 / bus_width)) << 6;
         ctrl |= dummy;
         ctrl |= ASPEED_SPI_NORMAL_READ;
 
@@ -624,11 +636,11 @@ impl<'a> FmcController<'a> {
         dbg!(self, "ram start: 0x{:08x}", ram_addr);
         self.regs
             .fmc088()
-            .write(|w| unsafe { w.bits(ram_addr as u32) });
+            .write(|w| unsafe { w.bits(u32::try_from(ram_addr).unwrap()) });
         let read_length = op.rx_buf.len() - 1;
         self.regs
             .fmc08c()
-            .write(|w| unsafe { w.bits(read_length as u32) });
+            .write(|w| unsafe { w.bits(u32::try_from(read_length).unwrap()) });
 
         // Enable IRQ
         //self.dma_irq_enable();
@@ -660,7 +672,7 @@ impl<'a> FmcController<'a> {
         let bus_width = get_addr_buswidth(op.mode as u32);
         ctrl_reg |= spi_io_mode(op.mode); // you must implement this
         ctrl_reg |= op.opcode << 16;
-        ctrl_reg |= (op.dummy_cycle / (8 / bus_width) as u32) << 6;
+        ctrl_reg |= (op.dummy_cycle / u32::from(8 / bus_width)) << 6;
         ctrl_reg |= ASPEED_SPI_NORMAL_WRITE;
 
         cs_ctrlreg_w!(self, cs, ctrl_reg);
@@ -678,11 +690,11 @@ impl<'a> FmcController<'a> {
             w.bits(self.spi_data.decode_addr[cs].start + op.addr - SPI_DMA_FLASH_MAP_BASE)
         });
         self.regs.fmc088().write(|w| unsafe {
-            w.bits((op.tx_buf.as_ptr() as usize as u32) + SPI_DMA_RAM_MAP_BASE)
+            w.bits(u32::try_from(op.tx_buf.as_ptr() as usize).unwrap() + SPI_DMA_RAM_MAP_BASE)
         });
         self.regs
             .fmc08c()
-            .write(|w| unsafe { w.bits(op.tx_buf.len() as u32 - 1) });
+            .write(|w| unsafe { w.bits(u32::try_from(op.tx_buf.len()).unwrap() - 1) });
 
         // Enable DMA IRQ if needed
         // self.enable_dma_irq(); // implement if necessary
@@ -726,7 +738,7 @@ impl<'a> SpiBus<u8> for FmcController<'a> {
         Ok(())
     }
 
-    fn transfer_in_place(&mut self, buffer: &mut [u8]) -> Result<(), SpiError> {
+    fn transfer_in_place(&mut self, _buffer: &mut [u8]) -> Result<(), SpiError> {
         todo!()
     }
 
@@ -744,7 +756,7 @@ impl<'a> SpiBusWithCs for FmcController<'a> {
         self.current_cs = cs;
         cs_ctrlreg_w!(self, cs, user_reg | ASPEED_SPI_USER_INACTIVE);
         cs_ctrlreg_w!(self, cs, user_reg);
-        dbg!(self, "activate cs:{}", cs as u32);
+        dbg!(self, "activate cs:{}", u32::try_from(cs).unwrap());
         Ok(())
     }
 
@@ -755,7 +767,7 @@ impl<'a> SpiBusWithCs for FmcController<'a> {
         }
         cs_ctrlreg_w!(self, cs, user_reg | ASPEED_SPI_USER_INACTIVE);
         cs_ctrlreg_w!(self, cs, self.spi_data.cmd_mode[cs].normal_read);
-        dbg!(self, "deactivate cs:{}", cs as u32);
+        dbg!(self, "deactivate cs:{}", u32::try_from(cs).unwrap());
         dbg!(
             self,
             "normal read:{:08x}",

@@ -114,13 +114,6 @@ pub struct SpiMonitor<SPIPF: SpipfInstance> {
     _marker: PhantomData<SPIPF>,
 }
 
-#[cfg(feature = "defmt")]
-impl<SPIPF: SpipfInstance> defmt::Format for SpiMonitor<SPIPF> {
-    fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "SpiMonitor");
-    }
-}
-
 impl<SPIPF: SpipfInstance> fmt::Debug for SpiMonitor<SPIPF> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("SpiMonitor")
@@ -137,9 +130,9 @@ pub const MAX_PRIV_REGION_SIZE: u32 = 256 * 1024 * 1024;
 pub const ADDR_LIMIT: u32 = 256 * 1024 * 1024;
 
 /// allow command table control flag
-pub const FLAG_CMD_TABLE_VALID: u32 = 0x00000000;
-pub const FLAG_CMD_TABLE_VALID_ONCE: u32 = 0x00000001;
-pub const FLAG_CMD_TABLE_LOCK_ALL: u32 = 0x00000002;
+pub const FLAG_CMD_TABLE_VALID: u32 = 0x0000_0000;
+pub const FLAG_CMD_TABLE_VALID_ONCE: u32 = 0x0000_0001;
+pub const FLAG_CMD_TABLE_LOCK_ALL: u32 = 0x0000_0002;
 
 /// general command 13
 pub const CMD_RDID: u8 = 0x9F;
@@ -696,9 +689,10 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
             //attemp to write to a fixed location
             if self.spim_write_fixed_loc_in_allow_cmd_table(cmd_list[i], reg_val) <= MAX_CMD_INDEX {
                 continue;
-            } else {
-                index += 1;
             }
+
+            index += 1;
+
             //write to dynamic slot
             if index < MAX_CMD_INDEX {
                 self.spi_monitor
@@ -713,11 +707,11 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         for index in 2..SPIM_CMD_TABLE_NUM {
             let reg_val = self.spi_monitor.spipfwt(index).read().bits();
             if reg_val == 0 {
-                return Ok(index as u32);
+                return Ok(u32::try_from(index).unwrap());
             }
         }
         Err(SpiMonitorError::NoAllowCmdSlotAvail(
-            SPIM_CMD_TABLE_NUM as u32,
+            u32::try_from(SPIM_CMD_TABLE_NUM).unwrap(),
         ))
     }
 
@@ -726,13 +720,13 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         cmd: u8,
         start_offset: u32,
     ) -> Result<u32, SpiMonitorError> {
-        if start_offset >= SPIM_CMD_TABLE_NUM as u32 {
+        if start_offset >= u32::try_from(SPIM_CMD_TABLE_NUM).unwrap() {
             return Err(SpiMonitorError::InvalidCmdSlotIndex(start_offset));
         }
 
-        for index in start_offset..SPIM_CMD_TABLE_NUM as u32 {
+        for index in start_offset..u32::try_from(SPIM_CMD_TABLE_NUM).unwrap() {
             let reg_val = self.spi_monitor.spipfwt(index as usize).read().bits();
-            if (reg_val & SPIM_CMD_TABLE_CMD_MASK) == (cmd as u32) {
+            if (reg_val & SPIM_CMD_TABLE_CMD_MASK) == u32::from(cmd) {
                 return Ok(index);
             }
         }
@@ -755,7 +749,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         //Try to write to a fixed location in the command table registers
         let index = self.spim_write_fixed_loc_in_allow_cmd_table(cmd, reg_val) as usize;
         if index <= MAX_CMD_INDEX {
-            return Ok(index as u32);
+            return Ok(u32::try_from(index).unwrap());
         }
         match self.spim_get_empty_allow_cmd_slot() {
             Ok(index) => {
@@ -764,7 +758,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
                     .write(|w| unsafe { w.bits(reg_val) });
                 Ok(index)
             }
-            Err(_) => Err(SpiMonitorError::NoAllowCmdSlotAvail(cmd as u32)),
+            Err(_) => Err(SpiMonitorError::NoAllowCmdSlotAvail(u32::from(cmd))),
         }
     }
     //  If the command already exists in allow command table and
@@ -777,7 +771,6 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
     //   filled into.
     pub fn spim_add_allow_command(&mut self, cmd: u8, flag: u32) -> Result<u32, SpiMonitorError> {
         //check if the command is already in allow command Table
-        let mut index: u32;
         let mut offset: u32 = 0;
 
         while offset < SPIM_CMD_TABLE_NUM as u32 {
@@ -817,7 +810,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         let mut offset: u32 = 0;
         let mut count: u32 = 0;
 
-        while offset < SPIM_CMD_TABLE_NUM as u32 {
+        while offset < u32::try_from(SPIM_CMD_TABLE_NUM).unwrap() {
             match self.spim_get_allow_cmd_slot(cmd, offset) {
                 Ok(index) => {
                     let reg_val = self.spi_monitor.spipfwt(index as usize).read().bits();
@@ -830,7 +823,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
                         count += 1;
                     } else if reg_val & SPIM_CMD_TABLE_VALID_BIT != 0 {
                         //locked and invalid
-                        return Err(SpiMonitorError::AllowCmdSlotInvalid(cmd as u32));
+                        return Err(SpiMonitorError::AllowCmdSlotInvalid(u32::from(cmd)));
                     }
                     offset = index + 1;
                     continue;
@@ -910,12 +903,11 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
     pub fn spim_addr_priv_access_enable(&mut self, priv_sel: AddrPrivRWSel) {
         let mut reg_val = self.spi_monitor.spipf000().read().bits();
         //mask out the upper 8 bits
-        reg_val &= 0x00FFFFFF;
+        reg_val &= 0x00FF_FFFF;
 
         match priv_sel {
             AddrPrivRWSel::AddrPrivReadSel => reg_val |= SEL_READ_TBL_MAJIC,
             AddrPrivRWSel::AddrPrivWriteSel => reg_val |= SEL_WRITE_TBL_MAJIC,
-            _ => return,
         }
         self.spi_monitor
             .spipf000()
@@ -943,7 +935,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
     //Calculate numbers of 16KB blocks
     //Start address may cross two different 16KB blocks
     pub fn spim_get_total_block_num(&mut self, addr: u32, len: u32) -> u32 {
-        let (aligned_addr, adjusted_len) = self.spim_get_adjusted_addr_len(addr, len);
+        let (_aligned_addr, adjusted_len) = self.spim_get_adjusted_addr_len(addr, len);
         adjusted_len / ACCESS_BLOCK_UNIT
     }
 
@@ -984,7 +976,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
                 if priv_op == AddrPriOp::FlagAddrPrivEnable {
                     self.spi_monitor
                         .spipfwa(reg_off)
-                        .write(|w| unsafe { w.bits(0xffffffff) });
+                        .write(|w| unsafe { w.bits(0xffff_ffff) });
                 } else {
                     self.spi_monitor
                         .spipfwa(reg_off)
@@ -1098,7 +1090,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         );
 
         for iter in 0..self.read_blocked_region_num {
-            if let Ok(num_blocks) = self.spim_address_privilege_config(
+            if let Ok(_num_blocks) = self.spim_address_privilege_config(
                 AddrPrivRWSel::AddrPrivReadSel,
                 AddrPriOp::FlagAddrPrivDisable,
                 self.read_blocked_regions[iter as usize].start,
@@ -1106,7 +1098,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
             ) {}
         }
         for iter in 0..self.write_blocked_region_num {
-            if let Ok(num_blocks) = self.spim_address_privilege_config(
+            if let Ok(_num_blocks) = self.spim_address_privilege_config(
                 AddrPrivRWSel::AddrPrivWriteSel,
                 AddrPriOp::FlagAddrPrivDisable,
                 self.write_blocked_regions[iter as usize].start,
@@ -1147,7 +1139,6 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
     }
 
     pub fn spim_monitor_enable(&mut self, enable: bool) {
-        let pass_through_enbl = !enable;
         self.spim_ctrl_monitor_config(enable);
         // self.spim_miso_multi_func_adjust(enable);
         self.spim_passthrough_config(enable, SpimPassthroughMode::SinglePassthrough);
