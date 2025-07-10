@@ -164,7 +164,7 @@ impl<D: DelayNs> SysCon<D> {
     fn set_frequency(&mut self, clock_id: ClockId, frequency_hz: u64) -> Result<(), Error> {
         let src: u32;
         let clk_div: u32;
-        let freq: u32 = u32::try_from(frequency_hz).unwrap();
+        let freq = u32::try_from(frequency_hz).map_err(|_| Error::InvalidClockFrequency)?;
         match clock_id {
             ClockId::ClkI3C0 | ClockId::ClkI3C1 | ClockId::ClkI3C2 | ClockId::ClkI3C3 => {
                 if self.scu.scu310().read().i3cclk_source_sel().bit() == I3C_CLK_SRC_480MHZ {
@@ -174,9 +174,11 @@ impl<D: DelayNs> SysCon<D> {
                 }
                 clk_div = src / freq;
                 if clk_div <= u32::from(ASPEED_I3C_CLOCK_DIVIDER_MAX) {
-                    self.scu.scu310().modify(|_, w| unsafe {
-                        w.i3cclk_divider_sel().bits(u8::try_from(clk_div).unwrap())
-                    });
+                    let divider =
+                        u8::try_from(clk_div).map_err(|_| Error::InvalidClockFrequency)?;
+                    self.scu
+                        .scu310()
+                        .modify(|_, w| unsafe { w.i3cclk_divider_sel().bits(divider) });
                     Ok(())
                 } else {
                     Err(Error::InvalidClockFrequency)
@@ -186,9 +188,11 @@ impl<D: DelayNs> SysCon<D> {
                 src = HPLL_FREQ;
                 clk_div = src / freq;
                 if clk_div <= u32::from(ASPEED_HCLK_CLOCK_DIVIDER_MAX) {
-                    self.scu.scu314().modify(|_, w| unsafe {
-                        w.hclkdivider_sel().bits(u8::try_from(clk_div).unwrap())
-                    });
+                    let divider =
+                        u8::try_from(clk_div).map_err(|_| Error::InvalidClockFrequency)?;
+                    self.scu
+                        .scu314()
+                        .modify(|_, w| unsafe { w.hclkdivider_sel().bits(divider) });
                     Ok(())
                 } else {
                     Err(Error::InvalidClockFrequency)
@@ -198,10 +202,11 @@ impl<D: DelayNs> SysCon<D> {
                 src = HPLL_FREQ;
                 clk_div = src / freq;
                 if clk_div <= u32::from(ASPEED_PCLK_CLOCK_DIVIDER_MAX) {
-                    self.scu.scu310().modify(|_, w| unsafe {
-                        w.apbbus_pclkdivider_sel()
-                            .bits(u8::try_from(clk_div).unwrap())
-                    });
+                    let divider =
+                        u8::try_from(clk_div).map_err(|_| Error::InvalidClockFrequency)?;
+                    self.scu
+                        .scu310()
+                        .modify(|_, w| unsafe { w.apbbus_pclkdivider_sel().bits(divider) });
                     Ok(())
                 } else {
                     Err(Error::InvalidClockFrequency)
@@ -349,9 +354,15 @@ impl<D: DelayNs> SysCon<D> {
         }
         result = self.reset_assert(reset_id);
         if result == Ok(()) {
-            self.delay
-                .delay_ns(u32::try_from(duration.as_nanos()).unwrap());
-            result = self.reset_deassert(reset_id);
+            match u32::try_from(duration.as_nanos()) {
+                Ok(ns) => {
+                    self.delay.delay_ns(ns);
+                    result = self.reset_deassert(reset_id);
+                }
+                Err(_) => {
+                    result = Err(Error::InvalidResetId);
+                }
+            }
         }
         result
     }
@@ -390,33 +401,11 @@ impl<D: DelayNs> ClockControl for SysCon<D> {
     type ClockConfig = ClockConfig;
 
     fn enable(&mut self, clock_id: &Self::ClockId) -> Result<(), Self::Error> {
-        match clock_id {
-            ClockId::ClkMCLK
-            | ClockId::ClkYCLK
-            | ClockId::ClkREFCLK
-            | ClockId::ClkRSACLK
-            | ClockId::ClkI3C0
-            | ClockId::ClkI3C1
-            | ClockId::ClkI3C2
-            | ClockId::ClkI3C3
-            | ClockId::ClkPCLK
-            | ClockId::ClkHCLK => self.enable_clock(*clock_id as u8),
-        }
+        self.enable_clock(*clock_id as u8)
     }
 
     fn disable(&mut self, clock_id: &Self::ClockId) -> Result<(), Self::Error> {
-        match clock_id {
-            ClockId::ClkMCLK
-            | ClockId::ClkYCLK
-            | ClockId::ClkREFCLK
-            | ClockId::ClkRSACLK
-            | ClockId::ClkI3C0
-            | ClockId::ClkI3C1
-            | ClockId::ClkI3C2
-            | ClockId::ClkI3C3
-            | ClockId::ClkPCLK
-            | ClockId::ClkHCLK => self.disable_clock(*clock_id as u8),
-        }
+        self.disable_clock(*clock_id as u8)
     }
 
     fn set_frequency(
