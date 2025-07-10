@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 pub struct Pinctrl;
 
 pub struct PinctrlPin {
@@ -1339,15 +1341,13 @@ pub const PINCTRL_I2C13: &[PinctrlPin] =
 #[macro_export]
 macro_rules! modify_reg {
     ($reg:expr, $bit:expr, $clear:expr) => {{
-        $reg.modify(|r, w| unsafe {
-            let current = r.bits();
-            let new_val = if $clear {
-                current & !(1 << $bit)
-            } else {
-                current | (1 << $bit)
-            };
-            w.bits(new_val)
-        });
+        let mut val: u32 = $reg.read().bits();
+        if $clear {
+            val &= !(1 << $bit);
+        } else {
+            val |= (1 << $bit);
+        }
+        $reg.write(|w| unsafe { w.bits(val) });
     }};
 }
 

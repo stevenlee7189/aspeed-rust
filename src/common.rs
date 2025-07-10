@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use crate::uart::UartController;
 use core::ops::{Index, IndexMut};
 use embedded_io::Write;
@@ -17,11 +19,19 @@ pub struct DmaBuffer<const N: usize> {
     pub buf: [u8; N],
 }
 
+impl<const N: usize> Default for DmaBuffer<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const N: usize> DmaBuffer<N> {
+    #[must_use]
     pub const fn new() -> Self {
         Self { buf: [0; N] }
     }
 
+    #[must_use]
     pub fn as_ptr(&self) -> *const u8 {
         self.buf.as_ptr()
     }
@@ -30,10 +40,17 @@ impl<const N: usize> DmaBuffer<N> {
         self.buf.as_mut_ptr()
     }
 
+    #[must_use]
     pub const fn len(&self) -> usize {
         N
     }
 
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        N == 0
+    }
+
+    #[must_use]
     pub fn as_slice(&self, start: usize, end: usize) -> &[u8] {
         &self.buf[start..end]
     }
@@ -81,11 +98,11 @@ impl<'a> UartLogger<'a> {
 
 impl<'a> Logger for UartLogger<'a> {
     fn debug(&mut self, msg: &str) {
-        writeln!(self.uart, "{}", msg).ok();
+        writeln!(self.uart, "{msg}").ok();
         write!(self.uart, "\r").ok();
     }
     fn error(&mut self, msg: &str) {
-        writeln!(self.uart, "ERROR: {}", msg).ok();
+        writeln!(self.uart, "ERROR: {msg}").ok();
         write!(self.uart, "\r").ok();
     }
 }
