@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use std::{
     fs,
     io::{BufRead, BufReader, Error, ErrorKind},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 use walkdir::DirEntry;
 
@@ -68,7 +68,11 @@ pub fn fix() -> Result<()> {
 fn find_files(dir: &Path, extensions: &[&str]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
-    for entry in walkdir::WalkDir::new(dir) {
+    let walker = walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_entry(|entry| should_visit(entry));
+
+    for entry in walker {
         let entry = entry?;
 
         if !allow_file(&entry) {
@@ -88,12 +92,9 @@ fn find_files(dir: &Path, extensions: &[&str]) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn allow_file(entry: &DirEntry) -> bool {
-    let path = entry.path();
-
-    // Skip ignored directories
-    if path.is_dir() {
-        if let Some(name) = path.file_name() {
+fn should_visit(entry: &DirEntry) -> bool {
+    for component in entry.path().components() {
+        if let Component::Normal(name) = component {
             if let Some(name_str) = name.to_str() {
                 if IGNORED_DIRS.contains(&name_str) {
                     return false;
@@ -101,6 +102,11 @@ fn allow_file(entry: &DirEntry) -> bool {
             }
         }
     }
+    true
+}
+
+fn allow_file(entry: &DirEntry) -> bool {
+    let path = entry.path();
 
     // Skip ignored files
     if path.is_file() {
