@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use super::{
     aspeed_get_spi_freq_div, get_addr_buswidth, get_hclock_rate, get_mid_point_of_longest_one,
     spi_cal_dummy_cycle, spi_calibration_enable, spi_io_mode, spi_io_mode_user, spi_read_data,
@@ -8,6 +10,9 @@ use super::{
     SPI_DMA_FLASH_MAP_BASE, SPI_DMA_GET_REQ_MAGIC, SPI_DMA_GRANT, SPI_DMA_RAM_MAP_BASE,
     SPI_DMA_REQUEST, SPI_DMA_STATUS, SPI_DMA_TIMEOUT,
 };
+
+#[cfg(feature = "spi_dma")]
+use super::{SPI_DMA_TRIGGER_LEN, SPI_NOR_DATA_DIRECT_READ, SPI_NOR_DATA_DIRECT_WRITE};
 
 use crate::dbg;
 use crate::{common::DummyDelay, spi::norflash::SpiNorData, uart::UartController};
@@ -126,12 +131,17 @@ impl<'a> FmcController<'a> {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn segment_start(&mut self, reg_val: u32) -> u32 {
         (reg_val & 0x0ff8) << 16
     }
+
+    #[allow(clippy::unused_self)]
     fn segment_end(&mut self, reg_val: u32) -> u32 {
         (reg_val & 0x0ff8_0000) | 0x0007_ffff
     }
+
+    #[allow(clippy::unused_self)]
     fn segment_compose(&mut self, start: u32, end: u32) -> u32 {
         ((((start >> 19) << 19) >> 16) & 0xfff8) | (((end >> 19) << 19) & 0xfff8_0000)
     }
@@ -141,24 +151,28 @@ impl<'a> FmcController<'a> {
         let mut total_decode_range = 0;
         let mut pre_end_addr = 0;
         dbg!(self, "rang reinit() flash size: {}", flash_sz);
-        for cs in 0..self.spi_config.max_cs {
-            let tmp = if cs == 0 {
-                self.regs.fmc030().read().bits()
-            } else if cs == 1 {
-                self.regs.fmc034().read().bits()
-            } else {
-                0
+
+        for (cs, size) in decode_sz_arr
+            .iter_mut()
+            .enumerate()
+            .take(self.spi_config.max_cs)
+        {
+            let tmp = match cs {
+                0 => self.regs.fmc030().read().bits(),
+                1 => self.regs.fmc034().read().bits(),
+                _ => 0,
             };
 
-            decode_sz_arr[cs] = if tmp == 0 {
+            *size = if tmp == 0 {
                 0
             } else {
                 self.segment_end(tmp) - self.segment_start(tmp) + 1
             };
-            total_decode_range += decode_sz_arr[cs];
-            dbg!(self, "decode_sz_arr[{}]: {}", cs, decode_sz_arr[cs]);
-        } //for
 
+            total_decode_range += *size;
+
+            dbg!(self, "decode_sz_arr[{}]: {:08x}", cs, *size);
+        }
         dbg!(self, "total range: {}", total_decode_range);
 
         // prepare new decode sz array
@@ -169,8 +183,13 @@ impl<'a> FmcController<'a> {
         }
 
         // 3. Apply new decode config
-        for cs in 0..self.spi_config.max_cs {
-            if decode_sz_arr[cs] == 0 {
+        for (cs, size) in decode_sz_arr
+            .iter()
+            .copied()
+            .enumerate()
+            .take(self.spi_config.max_cs)
+        {
+            if size == 0 {
                 continue;
             }
 
@@ -180,8 +199,8 @@ impl<'a> FmcController<'a> {
                 pre_end_addr
             };
 
-            let end_addr = start_addr + decode_sz_arr[cs] - 1;
-
+            let end_addr = start_addr + size - 1;
+            dbg!(self, "start: {:08x}, end: {:08x}", start_addr, end_addr);
             let value = self.segment_compose(start_addr, end_addr);
             if cs == 0 {
                 self.regs.fmc030().write(|w| unsafe { w.bits(value) });
@@ -289,7 +308,6 @@ impl<'a> FmcController<'a> {
         cs_ctrlreg_w!(self, cs, reg_val);
 
         // Allocate buffers (replace with static buffers or heap allocator)
-        const SPI_CALIB_LEN: usize = 256; // Use actual length needed
         let mut check_buf = [0u8; SPI_CALIB_LEN];
         let mut calib_res = [0u8; 6 * 17];
 
@@ -435,7 +453,7 @@ impl<'a> FmcController<'a> {
 
         checksum
     }
-    fn spi_nor_transceive_user(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError> {
+    fn spi_nor_transceive_user(&mut self, op_info: &mut SpiNorData) {
         let cs: usize = self.current_cs;
         let dummy = [0u8; 12];
         let start_ptr = self.spi_data.decode_addr[cs].start as *mut u32;
@@ -481,10 +499,8 @@ impl<'a> FmcController<'a> {
 
         if op_info.data_direct == super::SPI_NOR_DATA_DIRECT_READ {
             unsafe { spi_read_data(start_ptr, op_info.rx_buf) };
-            Ok(())
         } else {
             unsafe { spi_write_data(start_ptr, op_info.tx_buf) };
-            Ok(())
         }
     }
 
@@ -516,7 +532,7 @@ impl<'a> FmcController<'a> {
                 if use_dma {
                     return self.read_dma(op_info);
                 } else {
-                    return self.spi_nor_transceive_user(op_info);
+                    self.spi_nor_transceive_user(op_info);
                 }
             } else if op_info.data_direct == SPI_NOR_DATA_DIRECT_WRITE {
                 dbg!(self, "write dma");
@@ -530,11 +546,11 @@ impl<'a> FmcController<'a> {
                     if use_dma {
                         return self.write_dma(op_info);
                     } else {
-                        return self.spi_nor_transceive_user(op_info);
+                        self.spi_nor_transceive_user(op_info);
                     }
                 } //spi dma write
                 #[cfg(not(feature = "spi_dma_write"))]
-                return self.spi_nor_transceive_user(op_info);
+                self.spi_nor_transceive_user(op_info);
             } //write
             Ok(())
         } // dma
@@ -542,7 +558,8 @@ impl<'a> FmcController<'a> {
         #[cfg(not(feature = "spi_dma"))]
         {
             dbg!(self, "no dma transceive user");
-            self.spi_nor_transceive_user(op_info)
+            self.spi_nor_transceive_user(op_info);
+            Ok(())
         }
     }
 
@@ -656,6 +673,7 @@ impl<'a> FmcController<'a> {
         self.wait_for_dma_completion(SPI_DMA_TIMEOUT)
     }
 
+    #[allow(dead_code)]
     fn write_dma(&mut self, op: &mut SpiNorData) -> Result<(), SpiError> {
         let cs = self.current_cs;
         dbg!(self, "##### write_dma ####");
@@ -777,7 +795,8 @@ impl<'a> SpiBusWithCs for FmcController<'a> {
     }
 
     fn nor_transfer(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError> {
-        self.spi_nor_transceive(op_info)
+        let _ = self.spi_nor_transceive(op_info);
+        Ok(())
     }
 
     fn nor_read_init(&mut self, cs: usize, op_info: &SpiNorData) {

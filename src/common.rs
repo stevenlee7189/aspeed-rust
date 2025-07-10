@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 pub struct DummyDelay;
 
 impl embedded_hal::delay::DelayNs for DummyDelay {
@@ -13,7 +15,14 @@ pub struct DmaBuffer<const N: usize> {
     pub buf: [u8; N],
 }
 
+impl<const N: usize> Default for DmaBuffer<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const N: usize> DmaBuffer<N> {
+    #[must_use]
     pub const fn new() -> Self {
         Self { buf: [0; N] }
     }
@@ -31,6 +40,11 @@ impl<const N: usize> DmaBuffer<N> {
     #[must_use]
     pub fn len(&self) -> usize {
         N
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        N == 0
     }
 
     #[must_use]

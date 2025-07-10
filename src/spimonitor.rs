@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use ast1060_pac::Scu;
 use core::cmp::min;
 use core::fmt;
@@ -42,7 +44,7 @@ pub enum SpimSpiMaster {
     SPI2 = 1,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SpimPassthroughMode {
     SinglePassthrough = 0,
     MultiPassthrough = 1,
@@ -55,6 +57,7 @@ pub enum SpimExtMuxSel {
     SpimExtMuxSel1 = 1,
 }
 impl SpimExtMuxSel {
+    #[must_use]
     pub fn to_bool(self) -> bool {
         self as u8 != 0
     }
@@ -197,6 +200,7 @@ pub const SPIM0_EXT_MUX_SEL_BIT_POS: u32 = 12;
 
 //pin control
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct CmdTableInfo {
     cmd: u8,
@@ -215,6 +219,8 @@ pub struct RegionInfo {
 
 //}
 //compile time - const fn
+#[allow(clippy::too_many_arguments)]
+#[must_use]
 pub const fn cmd_table_value(
     g: u32,
     w: u32,
@@ -424,7 +430,8 @@ pub static CMDS_ARRAY: &[CmdTableInfo] = &[
 ];
 
 impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
-    /// Creates a new SpiMonitor
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
     pub fn new(
         force_rel_flash_rst: bool,
         ext_mux_sel: SpimExtMuxSel,
@@ -672,14 +679,11 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
     pub fn spim_allow_cmd_table_init(&mut self, cmd_list: &[u8], cmd_num: u8, flag: u32) {
         let mut index = 1;
         let list_size = min(cmd_num as usize, cmd_list.len());
-        for i in 0..list_size {
+        for &cmd in cmd_list.iter().take(list_size) {
             //retrieve Allow Command Table Register Value
-            let mut reg_val = match spim_get_cmd_table_val(cmd_list[i]) {
-                Ok(val) => val,
-                _ => {
-                    //eprintln!("Unknown SPI command: 0x{:02X}", cmd);
-                    continue;
-                }
+            let Ok(mut reg_val) = spim_get_cmd_table_val(cmd) else {
+                //eprintln!("Unknown SPI command: 0x{:02X}", cmd);
+                continue;
             };
             if (flag & FLAG_CMD_TABLE_VALID_ONCE) > 0 {
                 reg_val |= SPIM_CMD_TABLE_VALID_ONCE_BIT;
@@ -687,7 +691,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
                 reg_val |= SPIM_CMD_TABLE_VALID_BIT;
             }
             //attemp to write to a fixed location
-            if self.spim_write_fixed_loc_in_allow_cmd_table(cmd_list[i], reg_val) <= MAX_CMD_INDEX {
+            if self.spim_write_fixed_loc_in_allow_cmd_table(cmd, reg_val) <= MAX_CMD_INDEX {
                 continue;
             }
 
@@ -736,9 +740,8 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
 
     pub fn spim_add_new_command(&mut self, cmd: u8, flag: u32) -> Result<u32, SpiMonitorError> {
         // Retrieve the command table value
-        let mut reg_val = match spim_get_cmd_table_val(cmd) {
-            Ok(val) => val,
-            Err(_) => return Err(SpiMonitorError::CommandNotFound(cmd)),
+        let Ok(mut reg_val) = spim_get_cmd_table_val(cmd) else {
+            return Err(SpiMonitorError::CommandNotFound(cmd));
         };
         if (flag & FLAG_CMD_TABLE_VALID_ONCE) > 0 {
             reg_val |= SPIM_CMD_TABLE_VALID_ONCE_BIT;
@@ -747,7 +750,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         }
 
         //Try to write to a fixed location in the command table registers
-        let index = self.spim_write_fixed_loc_in_allow_cmd_table(cmd, reg_val) as usize;
+        let index = self.spim_write_fixed_loc_in_allow_cmd_table(cmd, reg_val);
         if index <= MAX_CMD_INDEX {
             return Ok(u32::try_from(index).unwrap());
         }
@@ -773,7 +776,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
         //check if the command is already in allow command Table
         let mut offset: u32 = 0;
 
-        while offset < SPIM_CMD_TABLE_NUM as u32 {
+        while offset < u32::try_from(SPIM_CMD_TABLE_NUM).unwrap() {
             match self.spim_get_allow_cmd_slot(cmd, offset) {
                 Ok(index) => {
                     //it's locked?
@@ -859,10 +862,10 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
                     .spipfwt(index)
                     .modify(|_, w| w.lock().bit(true));
             }
-            return Ok(SPIM_CMD_TABLE_NUM as u32);
+            return Ok(u32::try_from(SPIM_CMD_TABLE_NUM).unwrap());
         }
 
-        while offset < SPIM_CMD_TABLE_NUM as u32 {
+        while offset < u32::try_from(SPIM_CMD_TABLE_NUM).unwrap() {
             match self.spim_get_allow_cmd_slot(cmd, offset) {
                 Ok(index) => {
                     //it's locked?
@@ -1022,7 +1025,7 @@ impl<SPIPF: SpipfInstance> SpiMonitor<SPIPF> {
     pub fn spim_lock_common(&mut self) {
         self.spim_lock_rw_priv_table(AddrPrivRWSel::AddrPrivReadSel);
         self.spim_lock_rw_priv_table(AddrPrivRWSel::AddrPrivWriteSel);
-        self.spim_lock_allow_command_table(0, FLAG_CMD_TABLE_LOCK_ALL);
+        let _ = self.spim_lock_allow_command_table(0, FLAG_CMD_TABLE_LOCK_ALL);
 
         self.spi_monitor.spipf000().modify(|_, w| {
             w.wr_dis_of_spipf000()

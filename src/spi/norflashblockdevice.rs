@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use crate::spi::norflash;
 use crate::{
     common::DummyDelay,
@@ -8,7 +10,6 @@ use embedded_hal::delay::DelayNs;
 use proposed_traits::block_device as BD;
 use proposed_traits::block_device::{BlockAddress, BlockDevice, BlockRange, ErrorType};
 
-/// Adapter that wraps a SpiNorDevice and implements BlockDevice
 pub struct NorFlashBlockDevice<T: SpiNorDevice> {
     device: T,
     capacity: usize,
@@ -165,9 +166,11 @@ where
             let write_addr = addr + offset;
 
             let result = if self.supports_4byte_addr {
-                self.device.nor_page_program_4b(write_addr as u32, chunk)
+                self.device
+                    .nor_page_program_4b(u32::try_from(write_addr).unwrap(), chunk)
             } else {
-                self.device.nor_page_program(write_addr as u32, chunk)
+                self.device
+                    .nor_page_program(u32::try_from(write_addr).unwrap(), chunk)
             };
 
             if result.is_err() {

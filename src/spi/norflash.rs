@@ -1,6 +1,8 @@
+// Licensed under the Apache-2.0 license
+
 use super::device::ChipSelectDevice;
 use super::SpiBusWithCs;
-use super::*;
+use super::{norflash, SpiError, SPI_NOR_DATA_DIRECT_READ, SPI_NOR_DATA_DIRECT_WRITE};
 use crate::common::DummyDelay;
 use crate::spimonitor::SpipfInstance;
 use embedded_hal::delay::DelayNs;
@@ -231,7 +233,7 @@ where
             dummy_cycle: 0,
             addr: address,
             addr_len: 3,
-            data_len: data.len() as u32,
+            data_len: u32::try_from(data.len()).unwrap(),
             tx_buf: data,
             rx_buf: &mut [],
             data_direct: SPI_NOR_DATA_DIRECT_WRITE,
@@ -249,7 +251,7 @@ where
             dummy_cycle: 0,
             addr: address,
             addr_len: 4,
-            data_len: data.len() as u32,
+            data_len: u32::try_from(data.len()).unwrap(),
             tx_buf: data,
             rx_buf: &mut [],
             data_direct: SPI_NOR_DATA_DIRECT_WRITE,
@@ -266,7 +268,7 @@ where
             dummy_cycle: 8,
             addr: address,
             addr_len: 3,
-            data_len: buf.len() as u32, // it is not in used.
+            data_len: u32::try_from(buf.len()).unwrap(), // it is not in used.
             tx_buf: &[],
             rx_buf: buf,
             data_direct: SPI_NOR_DATA_DIRECT_READ,
@@ -283,7 +285,7 @@ where
             dummy_cycle: 8,
             addr: address,
             addr_len: 4,
-            data_len: buf.len() as u32, // it is not in used.
+            data_len: u32::try_from(buf.len()).unwrap(), // it is not in used.
             tx_buf: &[],
             rx_buf: buf,
             data_direct: SPI_NOR_DATA_DIRECT_READ,
@@ -358,20 +360,7 @@ where
         let mask = (1 << bits) - 1;
         (address & mask) == 0
     }
-    /**
-     * @brief Wait until the flash is ready
-     *
-     * @note The device must be externally acquired before invoking this
-     * function.
-     *
-     * This function should be invoked after every ERASE, PROGRAM, or
-     * WRITE_STATUS operation before continuing.  This allows us to assume
-     * that the device is ready to accept new commands at any other point
-     * in the code.
-     *
-     * @param dev The device structure
-     * @return 0 on success, negative errno code otherwise
-     */
+
     fn nor_wait_until_ready(&mut self) {
         let mut delay = DummyDelay {};
         let mut buf: [u8; 1] = [0u8];
@@ -390,7 +379,7 @@ where
         loop {
             start_transfer!(self, &mut nor_data);
             delay.delay_ns(1_000);
-            if (nor_data.rx_buf[0] as u32 & SPI_NOR_WIP_BIT) == 0 {
+            if (u32::from(nor_data.rx_buf[0]) & SPI_NOR_WIP_BIT) == 0 {
                 break;
             }
         }

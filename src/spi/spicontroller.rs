@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use super::{
     aspeed_get_spi_freq_div, get_addr_buswidth, get_hclock_rate, get_mid_point_of_longest_one,
     spi_cal_dummy_cycle, spi_calibration_enable, spi_io_mode, spi_io_mode_user, spi_read_data,
@@ -8,6 +10,10 @@ use super::{
     SPI_DMA_FLASH_MAP_BASE, SPI_DMA_GET_REQ_MAGIC, SPI_DMA_GRANT, SPI_DMA_RAM_MAP_BASE,
     SPI_DMA_REQUEST, SPI_DMA_STATUS, SPI_DMA_TIMEOUT,
 };
+
+#[cfg(feature = "spi_dma")]
+use super::{SPI_DMA_TRIGGER_LEN, SPI_NOR_DATA_DIRECT_READ, SPI_NOR_DATA_DIRECT_WRITE};
+
 use crate::dbg;
 use crate::{common::DummyDelay, spi::norflash::SpiNorData, uart::UartController};
 
@@ -94,7 +100,7 @@ impl<'a> SpiController<'a> {
         }
 
         if self.spi_config.pure_spi_mode_only {
-            unit_sz = ASPEED_SPI_SZ_256M / self.spi_config.max_cs as u32;
+            unit_sz = ASPEED_SPI_SZ_256M / u32::try_from(self.spi_config.max_cs).unwrap();
             unit_sz &= !(ASPEED_SPI_SZ_2M - 1);
         }
 
@@ -129,12 +135,17 @@ impl<'a> SpiController<'a> {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn segment_start(&self, reg_val: u32) -> u32 {
         (reg_val & 0x0ff0) << 16
     }
+
+    #[allow(clippy::unused_self)]
     fn segment_end(&self, reg_val: u32) -> u32 {
         (reg_val & 0x0ff0_0000) | 0x000f_ffff
     }
+
+    #[allow(clippy::unused_self)]
     fn segment_compose(&self, start: u32, end: u32) -> u32 {
         ((((start >> 20) << 20) >> 16) & 0xffff) | (((end >> 20) << 20) & 0xffff_0000)
     }
@@ -144,23 +155,28 @@ impl<'a> SpiController<'a> {
         let mut total_decode_range = 0;
         let mut pre_end_addr = 0;
         dbg!(self, "rang reinit() flash size: {:08x}", flash_sz);
-        for cs in 0..self.spi_config.max_cs {
-            let tmp = if cs == 0 {
-                self.regs.spi030().read().bits()
-            } else if cs == 1 {
-                self.regs.spi034().read().bits()
-            } else {
-                0
+
+        for (cs, size) in decode_sz_arr
+            .iter_mut()
+            .enumerate()
+            .take(self.spi_config.max_cs)
+        {
+            let tmp = match cs {
+                0 => self.regs.spi030().read().bits(),
+                1 => self.regs.spi034().read().bits(),
+                _ => 0,
             };
 
-            decode_sz_arr[cs] = if tmp == 0 {
+            *size = if tmp == 0 {
                 0
             } else {
                 self.segment_end(tmp) - self.segment_start(tmp) + 1
             };
-            total_decode_range += decode_sz_arr[cs];
-            dbg!(self, "decode_sz_arr[{}]: {:08x}", cs, decode_sz_arr[cs]);
-        } //for
+
+            total_decode_range += *size;
+
+            dbg!(self, "decode_sz_arr[{}]: {:08x}", cs, *size);
+        }
 
         dbg!(self, "total range: {:08x}", total_decode_range);
 
@@ -172,8 +188,13 @@ impl<'a> SpiController<'a> {
         }
 
         // 3. Apply new decode config
-        for cs in 0..self.spi_config.max_cs {
-            if decode_sz_arr[cs] == 0 {
+        for (cs, size) in decode_sz_arr
+            .iter()
+            .copied()
+            .enumerate()
+            .take(self.spi_config.max_cs)
+        {
+            if size == 0 {
                 continue;
             }
 
@@ -183,7 +204,7 @@ impl<'a> SpiController<'a> {
                 pre_end_addr
             };
 
-            let end_addr = start_addr + decode_sz_arr[cs] - 1;
+            let end_addr = start_addr + size - 1;
             dbg!(self, "start: {:08x}, end: {:08x}", start_addr, end_addr);
             let value = self.segment_compose(start_addr, end_addr);
             if cs == 0 {
@@ -215,7 +236,7 @@ impl<'a> SpiController<'a> {
         }
         let io_mode = spi_io_mode(op_info.mode);
         let dummy = spi_cal_dummy_cycle(
-            get_addr_buswidth(op_info.mode as u32) as u32,
+            u32::from(get_addr_buswidth(op_info.mode as u32)),
             op_info.dummy_cycle,
         );
         let read_cmd =
@@ -353,15 +374,15 @@ impl<'a> SpiController<'a> {
         let mut freq_to_use = max_freq;
 
         'outer: for (i, &mask) in hclk_masks.iter().enumerate() {
-            if freq_to_use < self.spi_data.hclk / (i as u32 + 2) {
+            if freq_to_use < self.spi_data.hclk / (u32::try_from(i).unwrap() + 2) {
                 dbg!(
                     self,
                     "Skipping frequency {}",
-                    self.spi_data.hclk / (i as u32 + 2)
+                    self.spi_data.hclk / (u32::try_from(i).unwrap() + 2)
                 );
                 continue;
             }
-            freq_to_use = self.spi_data.hclk / (i as u32 + 2);
+            freq_to_use = self.spi_data.hclk / (u32::try_from(i).unwrap() + 2);
 
             let checksum = self.aspeed_spi_dma_checksum(mask, 0);
             let pass = checksum == gold_checksum;
@@ -382,7 +403,7 @@ impl<'a> SpiController<'a> {
                     let checksum = self.aspeed_spi_dma_checksum(mask, reg_val);
                     let pass = checksum == gold_checksum;
                     let index = (hcycle * 17 + delay_ns) as usize;
-                    calib_res[index] = pass as u8;
+                    calib_res[index] = u8::from(pass);
                     dbg!(
                         self,
                         "HCLK/{}, {} HCLK cycle, {} delay_ns : {}",
@@ -399,8 +420,8 @@ impl<'a> SpiController<'a> {
                 dbg!(self, "Cannot get good calibration point.");
                 continue;
             }
-            let hcycle: u32 = (calib_point / 17) as u32;
-            let delay_ns: u32 = (calib_point % 17) as u32;
+            let hcycle: u32 = (calib_point / 17).try_into().unwrap();
+            let delay_ns: u32 = (calib_point % 17).try_into().unwrap();
 
             //log::debug!("Final hcycle: {}, delay_ns: {}", hcycle, delay_ns);
             let final_delay = ((1 << 3) | hcycle | (delay_ns << 4)) << (i * 8);
@@ -455,7 +476,7 @@ impl<'a> SpiController<'a> {
         // Set DMA length
         self.regs
             .spi08c()
-            .write(|w| unsafe { w.bits(SPI_CALIB_LEN as u32) });
+            .write(|w| unsafe { w.bits(u32::try_from(SPI_CALIB_LEN).unwrap()) });
         // Configure DMA control register
         let ctrl_val = SPI_DMA_ENABLE
             | SPI_DMA_CALC_CKSUM
@@ -475,27 +496,27 @@ impl<'a> SpiController<'a> {
         checksum
     }
 
-    fn spi_nor_transceive_user(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError> {
+    fn spi_nor_transceive_user(&mut self, op_info: &mut SpiNorData) {
         let cs: usize = self.current_cs;
         let dummy = [0u8; 12];
         let start_ptr = self.spi_data.decode_addr[cs].start as *mut u32;
         dbg!(
             self,
             "nor_transceive_user cs: {}, ahb start: {:08x}",
-            cs as u32,
+            u32::try_from(cs).unwrap(),
             self.spi_data.decode_addr[cs].start
         );
 
         // Send command
         let cmd_mode = self.spi_data.cmd_mode[cs].user
-            | super::spi_io_mode_user(super::get_cmd_buswidth(op_info.mode as u32) as u32);
+            | super::spi_io_mode_user(u32::from(super::get_cmd_buswidth(op_info.mode as u32)));
         cs_ctrlreg_w!(self, cs, cmd_mode);
         dbg!(self, "write opcode/cmd: 0x{:08x}", op_info.opcode);
         unsafe { super::spi_write_data(start_ptr, &[op_info.opcode.try_into().unwrap()]) };
 
         // Send address
         let addr_mode = self.spi_data.cmd_mode[cs].user
-            | super::spi_io_mode_user(super::get_addr_buswidth(op_info.mode as u32) as u32);
+            | super::spi_io_mode_user(u32::from(super::get_addr_buswidth(op_info.mode as u32)));
         cs_ctrlreg_w!(self, cs, addr_mode);
 
         let mut addr = op_info.addr;
@@ -508,7 +529,7 @@ impl<'a> SpiController<'a> {
 
         // Dummy cycles
         let bus_width: u8 = super::get_addr_buswidth(op_info.mode as u32);
-        let dummy_len: u8 = (op_info.dummy_cycle / (8 / bus_width as u32))
+        let dummy_len: u8 = (op_info.dummy_cycle / (8 / u32::from(bus_width)))
             .try_into()
             .unwrap();
         dbg!(self, "write dummy len: 0x{:08x}", dummy_len);
@@ -516,7 +537,7 @@ impl<'a> SpiController<'a> {
 
         // Data transfer
         let data_mode = self.spi_data.cmd_mode[cs].user
-            | spi_io_mode_user(super::get_data_buswidth(op_info.mode as u32) as u32);
+            | spi_io_mode_user(u32::from(super::get_data_buswidth(op_info.mode as u32)));
         cs_ctrlreg_w!(self, cs, data_mode);
 
         if op_info.data_direct == super::SPI_NOR_DATA_DIRECT_READ {
@@ -524,7 +545,6 @@ impl<'a> SpiController<'a> {
         } else {
             unsafe { spi_write_data(start_ptr, op_info.tx_buf) };
         }
-        Ok(())
     }
 
     // Helper wrappers would be defined for spi_write_data, spi_read_data, io_mode_user, etc.
@@ -562,7 +582,7 @@ impl<'a> SpiController<'a> {
                 if use_dma {
                     return self.read_dma(op_info);
                 } else {
-                    return self.spi_nor_transceive_user(op_info);
+                    self.spi_nor_transceive_user(op_info);
                 }
             } else if op_info.data_direct == SPI_NOR_DATA_DIRECT_WRITE {
                 dbg!(self, "write dma");
@@ -585,11 +605,11 @@ impl<'a> SpiController<'a> {
                     if use_dma {
                         return self.write_dma(op_info);
                     } else {
-                        return self.spi_nor_transceive_user(op_info);
+                        self.spi_nor_transceive_user(op_info);
                     }
                 } //spi dma write
                 #[cfg(not(feature = "spi_dma_write"))]
-                return self.spi_nor_transceive_user(op_info);
+                self.spi_nor_transceive_user(op_info);
             } //write
             Ok(())
         } // dma
@@ -597,7 +617,8 @@ impl<'a> SpiController<'a> {
         #[cfg(not(feature = "spi_dma"))]
         {
             dbg!(self, "no dma transceive user");
-            self.spi_nor_transceive_user(op_info)
+            self.spi_nor_transceive_user(op_info);
+            Ok(())
         }
     }
 
@@ -664,7 +685,7 @@ impl<'a> SpiController<'a> {
 
         // Calculate dummy cycle bits
         let bus_width = get_addr_buswidth(op.mode as u32);
-        let dummy = (op.dummy_cycle / (8 / bus_width) as u32) << 6;
+        let dummy = (op.dummy_cycle / (8 / u32::from(bus_width))) << 6;
         ctrl |= dummy;
         ctrl |= ASPEED_SPI_NORMAL_READ;
 
@@ -690,11 +711,11 @@ impl<'a> SpiController<'a> {
         dbg!(self, "ram start: 0x{:08x}", ram_addr);
         self.regs
             .spi088()
-            .write(|w| unsafe { w.bits(ram_addr as u32) });
+            .write(|w| unsafe { w.bits(u32::try_from(ram_addr).unwrap()) });
         let read_length = op.rx_buf.len() - 1;
         self.regs
             .spi08c()
-            .write(|w| unsafe { w.bits(read_length as u32) });
+            .write(|w| unsafe { w.bits(u32::try_from(read_length).unwrap()) });
 
         // Enable IRQ
         //self.dma_irq_enable();
@@ -711,6 +732,7 @@ impl<'a> SpiController<'a> {
         self.wait_for_dma_completion(SPI_DMA_TIMEOUT)
     }
 
+    #[allow(dead_code)]
     fn write_dma(&mut self, op: &mut SpiNorData) -> Result<(), SpiError> {
         let cs = self.current_cs;
         dbg!(self, "##### write_dma ####");
@@ -728,7 +750,7 @@ impl<'a> SpiController<'a> {
         let bus_width = get_addr_buswidth(op.mode as u32);
         ctrl_reg |= spi_io_mode(op.mode); // you must implement this
         ctrl_reg |= op.opcode << 16;
-        ctrl_reg |= (op.dummy_cycle / (8 / bus_width) as u32) << 6;
+        ctrl_reg |= (op.dummy_cycle / u32::from(8 / bus_width)) << 6;
         ctrl_reg |= ASPEED_SPI_NORMAL_WRITE;
         dbg!(
             self,
@@ -751,11 +773,11 @@ impl<'a> SpiController<'a> {
             w.bits(self.spi_data.decode_addr[cs].start + op.addr - SPI_DMA_FLASH_MAP_BASE)
         });
         self.regs.spi088().write(|w| unsafe {
-            w.bits((op.tx_buf.as_ptr() as usize as u32) + SPI_DMA_RAM_MAP_BASE)
+            w.bits(u32::try_from(op.tx_buf.as_ptr() as usize).unwrap() + SPI_DMA_RAM_MAP_BASE)
         });
         self.regs
             .spi08c()
-            .write(|w| unsafe { w.bits(op.tx_buf.len() as u32 - 1) });
+            .write(|w| unsafe { w.bits(u32::try_from(op.tx_buf.len()).unwrap() - 1) });
 
         // Enable DMA IRQ if needed
         // self.enable_dma_irq(); // implement if necessary
@@ -823,7 +845,7 @@ impl<'a> SpiBusWithCs for SpiController<'a> {
         self.current_cs = cs;
         cs_ctrlreg_w!(self, cs, user_reg | ASPEED_SPI_USER_INACTIVE);
         cs_ctrlreg_w!(self, cs, user_reg);
-        dbg!(self, "activate cs:{}", cs as u32);
+        dbg!(self, "activate cs:{}", u32::try_from(cs).unwrap());
         Ok(())
     }
 
@@ -834,7 +856,7 @@ impl<'a> SpiBusWithCs for SpiController<'a> {
         }
         cs_ctrlreg_w!(self, cs, user_reg | ASPEED_SPI_USER_INACTIVE);
         cs_ctrlreg_w!(self, cs, self.spi_data.cmd_mode[cs].normal_read);
-        dbg!(self, "deactivate cs:{}", cs as u32);
+        dbg!(self, "deactivate cs:{}", u32::try_from(cs).unwrap());
         dbg!(
             self,
             "normal read:{:08x}",
@@ -844,7 +866,7 @@ impl<'a> SpiBusWithCs for SpiController<'a> {
     }
 
     fn nor_transfer(&mut self, op_info: &mut SpiNorData) -> Result<(), SpiError> {
-        self.spi_nor_transceive(op_info);
+        let _ = self.spi_nor_transceive(op_info);
         Ok(())
     }
 

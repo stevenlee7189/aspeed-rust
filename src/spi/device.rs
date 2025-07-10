@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use super::SpiBusWithCs;
 use super::SpiError;
 use crate::spimonitor::{SpiMonitor, SpipfInstance};
