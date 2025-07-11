@@ -6,9 +6,7 @@
 use aspeed_ddk::gpio::{gpiol, GpioExt};
 use core::sync::atomic::AtomicBool;
 // use core::arch::asm;
-use ast1060_pac::Peripherals;
 use aspeed_ddk::uart::{Config, UartController};
-use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::watchdog::WdtController;
 use ast1060_pac::Peripherals;
 use ast1060_pac::{Wdt, Wdt1};
@@ -21,8 +19,8 @@ use aspeed_ddk::syscon::{ClockId, ResetId, SysCon};
 use embedded_hal::digital::OutputPin;
 use fugit::MillisDurationU32 as MilliSeconds;
 
-use aspeed_ddk::tests::functional::gpio_test;
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
+use aspeed_ddk::tests::functional::gpio_test;
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use aspeed_ddk::tests::functional::hmac_test::run_hmac_tests;
 use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
