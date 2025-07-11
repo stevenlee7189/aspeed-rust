@@ -1,7 +1,9 @@
+// Licensed under the Apache-2.0 license
+
 //! GPIO pins
 
-use core::marker::PhantomData;
 use ast1060_pac::{Gpio, Scu};
+use core::marker::PhantomData;
 use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
 
 /// All input modes implement this
@@ -10,7 +12,7 @@ pub trait InputMode {}
 /// All output modes implement this
 pub trait OutputMode {}
 
-/// OpenDrain modes implement this
+/// `OpenDrain` modes implement this
 pub trait OpenDrainMode {
     /// Is pull-up enabled
     fn pup() -> bool;
@@ -122,7 +124,7 @@ gpioa.pa5.set_high();
 
 // GPIO
 macro_rules! gpio_macro {
-    ($GPIOX:ident, $gpiox:ident, $x:literal, $pos:literal, $data_val_reg:ident, 
+    ($GPIOX:ident, $gpiox:ident, $x:literal, $pos:literal, $data_val_reg:ident,
         $dir_reg:ident, $int_en_reg:ident, $int_sen_t0:ident,
         $int_sen_t1:ident, $int_sen_t2:ident, $int_sts_reg:ident,
         $rst_tolerant_reg:ident, $deb1_reg:ident, $deb2_reg:ident,
@@ -140,6 +142,7 @@ macro_rules! gpio_macro {
             }
 
             impl $GPIOX {
+                #[must_use]
                 pub fn new(gpio: Gpio) -> Self {
                     Self {gpio}
                 }
@@ -153,7 +156,7 @@ macro_rules! gpio_macro {
                     self.gpio.$cmd_src1_reg().modify(|r, w| unsafe {
                         w.bits(r.bits() & !(0xff << $pos))
                     });
-    
+
                     // debounce setting 1
                     self.gpio.$deb1_reg().modify(|r, w| unsafe {
                         w.bits(r.bits() & !(0xff << $pos))
@@ -174,7 +177,7 @@ macro_rules! gpio_macro {
 
             impl GpioExt for $GPIOX {
                 type Parts = Parts;
-    
+
                 fn split(self) -> Self::Parts {
                     Parts {
                         $(
@@ -192,7 +195,7 @@ macro_rules! gpio_macro {
                 pub struct $PXi<MODE> {
                     _mode: PhantomData<MODE>,
                 }
-    
+
                 impl<MODE> $PXi<MODE> {
                     pub fn set_up_multifunc_pin_ctrl(self) {
                         let p = unsafe{ &*Scu::ptr() };
@@ -276,6 +279,7 @@ macro_rules! gpio_macro {
                     }
 
                     /// Configures the pin to operate as a pulled down input pin
+                    #[must_use]
                     pub fn into_pull_down_input(self) -> $PXi<Input<PullDown>> {
                         self.set_up_multifunc_pin_ctrl();
                         let p = unsafe{ &*Gpio::ptr() };
@@ -289,8 +293,9 @@ macro_rules! gpio_macro {
                         });
                         $PXi { _mode: PhantomData }
                     }
-    
+
                     /// Configures the pin to operate as a pulled up input pin
+                    #[must_use]
                     pub fn into_pull_up_input(self) -> $PXi<Input<PullUp>> {
                         self.set_up_multifunc_pin_ctrl();
                         let p = unsafe{ &*Gpio::ptr() };
@@ -306,10 +311,11 @@ macro_rules! gpio_macro {
                     }
 
                     /// Configures the pin to operate as an open drain output pin
+                    #[must_use]
                     pub fn into_open_drain_output<ODM>(self) -> $PXi<Output<OpenDrain<ODM>>> where ODM:OpenDrainMode {
                         self.set_up_multifunc_pin_ctrl();
                         let p = unsafe { &*Gpio::ptr()};
-                        //data 
+                        //data
                         // 0 for active low; 1 for active high??
                         p.$data_val_reg().modify(|r, w| unsafe {
                             w.bits(r.bits() | (1u32 << ($pos + $i)))
@@ -322,6 +328,7 @@ macro_rules! gpio_macro {
                     }
 
                     /// Configures the pin to operate as an push pull output pin
+                    #[must_use]
                     pub fn into_push_pull_output(self) -> $PXi<Output<PushPull>> {
                         self.set_up_multifunc_pin_ctrl();
                         let p = unsafe { &*Gpio::ptr()};
@@ -329,7 +336,7 @@ macro_rules! gpio_macro {
                         p.$dir_reg().modify(|r, w| unsafe {
                             w.bits(r.bits() | (1u32 << ($pos + $i)))
                         });
-                        //data 
+                        //data
                         // 0/1 to drive low/high output??
                         p.$data_val_reg().modify(|r, w| unsafe {
                             w.bits(r.bits() | (1u32 << ($pos + $i)))
@@ -337,13 +344,13 @@ macro_rules! gpio_macro {
                         $PXi { _mode: PhantomData}
                     }
                 }
-    
+
                 impl<MODE> StatefulOutputPin for $PXi<Output<MODE>> where MODE: OutputMode {
                     fn is_set_high(&mut self) -> Result<bool, Self::Error> {
                         let p = unsafe { &*Gpio::ptr() };
                         Ok((p.$data_read_reg().read().bits() & (1u32 << ($pos + $i))) == (1u32 << ($pos + $i)))
                     }
-                
+
                     fn is_set_low(&mut self) -> Result<bool, Self::Error> {
                         match self.is_set_high() {
                             Ok(v) => Ok(!v),
@@ -351,34 +358,34 @@ macro_rules! gpio_macro {
                         }
                     }
                 }
-    
+
                 impl<MODE> OutputPin for $PXi<Output<MODE>> where MODE: OutputMode {
                     fn set_high(&mut self) -> Result<(), Self::Error> {
                         let p = unsafe { &*Gpio::ptr() };
-                
+
                         p.$data_val_reg().modify(|r, w| unsafe {
                             w.bits(r.bits() | (1u32 << ($pos + $i)))
                         });
                         Ok(())
                     }
-                
+
                     fn set_low(&mut self) -> Result<(), Self::Error> {
                         let p = unsafe { &*Gpio::ptr() };
-                
+
                         p.$data_val_reg().modify(|r, w| unsafe {
                             w.bits(r.bits() & !(1u32 << ($pos + $i)))
                         });
                         Ok(())
                     }
                 }
-    
+
                 impl<MODE> InputPin for $PXi<Input<MODE>> where MODE: InputMode {
                     fn is_high(&mut self) -> Result<bool, Self::Error> {
                         let p = unsafe { &*Gpio::ptr() };
-                
+
                         Ok((p.$data_read_reg().read().bits() & (1u32 << ($pos + $i))) == (1u32 << ($pos + $i)))
                     }
-                
+
                     fn is_low(&mut self) -> Result<bool, Self::Error> {
                         match self.is_high() {
                             Ok(v) => Ok(!v),
@@ -386,7 +393,7 @@ macro_rules! gpio_macro {
                         }
                     }
                 }
-    
+
                 impl<MODE> $PXi<Input<MODE>> where MODE: InputMode {
                     // Enables or disables interrupts on this GPIO pin.
                     pub fn set_interrupt_mode(&mut self, mode: InterruptMode) {
@@ -481,21 +488,22 @@ macro_rules! gpio_macro {
                                 });
                             }
                         }
-                    }   
-                
+                    }
+
                     // returns the current interrupt status for this pin
+                    #[must_use]
                     pub fn get_interrupt_status(&self) -> bool {
                         let p = unsafe {&*Gpio::ptr()};
                         (p.$int_sts_reg().read().bits() & (1u32 << ($pos + $i))) == (1u32 << ($pos + $i))
                     }
-                
+
                     pub fn clear_interrupt(&self) {
                         let p = unsafe {&*Gpio::ptr()};
                         p.$int_sts_reg().write(|w| unsafe {
                             w.bits((1u32 << ($pos + $i)))
                         });
                     }
-                
+
                     pub fn set_cmd_src(&self, cmd_src0: u32, cmd_src1: u32) {
                         let p = unsafe { &*Gpio::ptr()};
                         p.$cmd_src0_reg().modify(|r, w| unsafe {
@@ -505,7 +513,7 @@ macro_rules! gpio_macro {
                             w.bits((r.bits() & !(1u32 << ($pos + $i))) | (cmd_src1 << ($pos + $i)))
                         });
                     }
-                
+
                     pub fn select_debounce_timer(&self, deb_setting1: u32, deb_setting2: u32) {
                         let p = unsafe {&*Gpio::ptr()};
                         p.$deb1_reg().modify(|r, w| unsafe {
@@ -515,20 +523,20 @@ macro_rules! gpio_macro {
                             w.bits((r.bits() & !(1u32 << ($pos + $i))) | (deb_setting2 << ($pos + $i)))
                         });
                     }
-                
+
                 }
-    
+
                 impl<MODE> embedded_hal::digital::ErrorType for $PXi<MODE> {
                     type Error = GPIOError;
                 }
-    
+
             )+
-        } 
+        }
     };
 }
 
 // GPIO ABCD
-gpio_macro!( GPIOA, gpioa, 'a', 0, gpio000, gpio004, gpio008, 
+gpio_macro!( GPIOA, gpioa, 'a', 0, gpio000, gpio004, gpio008,
     gpio00c, gpio010, gpio014, gpio018, gpio01c, gpio040,
     gpio044, gpio060, gpio064, gpio0c0, gpio1d0, [
     PA0: (pa0, 0, Tristate),
@@ -541,7 +549,7 @@ gpio_macro!( GPIOA, gpioa, 'a', 0, gpio000, gpio004, gpio008,
     PA7: (pa7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOB, gpiob, 'b', 8, gpio000, gpio004, gpio008, 
+gpio_macro!( GPIOB, gpiob, 'b', 8, gpio000, gpio004, gpio008,
     gpio00c, gpio010, gpio014, gpio018, gpio01c, gpio040,
     gpio044, gpio060, gpio064, gpio0c0, gpio1d0, [
     PB0: (pb0, 0, Tristate),
@@ -554,7 +562,7 @@ gpio_macro!( GPIOB, gpiob, 'b', 8, gpio000, gpio004, gpio008,
     PB7: (pb7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOC, gpioc, 'c', 16, gpio000, gpio004, gpio008, 
+gpio_macro!( GPIOC, gpioc, 'c', 16, gpio000, gpio004, gpio008,
     gpio00c, gpio010, gpio014, gpio018, gpio01c, gpio040,
     gpio044, gpio060, gpio064, gpio0c0, gpio1d0, [
     PC0: (pc0, 0, Tristate),
@@ -567,7 +575,7 @@ gpio_macro!( GPIOC, gpioc, 'c', 16, gpio000, gpio004, gpio008,
     PC7: (pc7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOD, gpiod, 'd', 24, gpio000, gpio004, gpio008, 
+gpio_macro!( GPIOD, gpiod, 'd', 24, gpio000, gpio004, gpio008,
     gpio00c, gpio010, gpio014, gpio018, gpio01c, gpio040,
     gpio044, gpio060, gpio064, gpio0c0, gpio1d0, [
     PD0: (pd0, 0, Tristate),
@@ -581,7 +589,7 @@ gpio_macro!( GPIOD, gpiod, 'd', 24, gpio000, gpio004, gpio008,
 ]);
 
 // GPIO EFGH
-gpio_macro!( GPIOE, gpioe, 'e', 0, gpio020, gpio024, gpio028, 
+gpio_macro!( GPIOE, gpioe, 'e', 0, gpio020, gpio024, gpio028,
     gpio02c, gpio030, gpio034, gpio038, gpio03c, gpio048,
     gpio04c, gpio068, gpio06c, gpio0c4, gpio1d4, [
     PE0: (pe0, 0, Tristate),
@@ -594,7 +602,7 @@ gpio_macro!( GPIOE, gpioe, 'e', 0, gpio020, gpio024, gpio028,
     PE7: (pe7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOF, gpiof, 'f', 8, gpio020, gpio024, gpio028, 
+gpio_macro!( GPIOF, gpiof, 'f', 8, gpio020, gpio024, gpio028,
     gpio02c, gpio030, gpio034, gpio038, gpio03c, gpio048,
     gpio04c, gpio068, gpio06c, gpio0c4, gpio1d4, [
     PF0: (pf0, 0, Tristate),
@@ -607,7 +615,7 @@ gpio_macro!( GPIOF, gpiof, 'f', 8, gpio020, gpio024, gpio028,
     PF7: (pf7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOG, gpiog, 'g', 16, gpio020, gpio024, gpio028, 
+gpio_macro!( GPIOG, gpiog, 'g', 16, gpio020, gpio024, gpio028,
     gpio02c, gpio030, gpio034, gpio038, gpio03c, gpio048,
     gpio04c, gpio068, gpio06c, gpio0c4, gpio1d4, [
     PG0: (pg0, 0, Tristate),
@@ -620,7 +628,7 @@ gpio_macro!( GPIOG, gpiog, 'g', 16, gpio020, gpio024, gpio028,
     PG7: (pg7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOH, gpioh, 'h', 24, gpio020, gpio024, gpio028, 
+gpio_macro!( GPIOH, gpioh, 'h', 24, gpio020, gpio024, gpio028,
     gpio02c, gpio030, gpio034, gpio038, gpio03c, gpio048,
     gpio04c, gpio068, gpio06c, gpio0c4, gpio1d4, [
     PH0: (ph0, 0, Tristate),
@@ -634,7 +642,7 @@ gpio_macro!( GPIOH, gpioh, 'h', 24, gpio020, gpio024, gpio028,
 ]);
 
 // GPIO IJKL
-gpio_macro!( GPIOI, gpioi, 'i', 0, gpio070, gpio074, gpio098, 
+gpio_macro!( GPIOI, gpioi, 'i', 0, gpio070, gpio074, gpio098,
     gpio09c, gpio0a0, gpio0a4, gpio0a8, gpio0ac, gpio0b0,
     gpio0b4, gpio090, gpio094, gpio0b8, gpio0c8, [
     PI0: (pi0, 0, Tristate),
@@ -647,7 +655,7 @@ gpio_macro!( GPIOI, gpioi, 'i', 0, gpio070, gpio074, gpio098,
     PI7: (pi7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOJ, gpioj, 'j', 8, gpio070, gpio074, gpio098, 
+gpio_macro!( GPIOJ, gpioj, 'j', 8, gpio070, gpio074, gpio098,
     gpio09c, gpio0a0, gpio0a4, gpio0a8, gpio0ac, gpio0b0,
     gpio0b4, gpio090, gpio094, gpio0b8, gpio0c8, [
     PJ0: (pj0, 0, Tristate),
@@ -660,7 +668,7 @@ gpio_macro!( GPIOJ, gpioj, 'j', 8, gpio070, gpio074, gpio098,
     PJ7: (pj7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOK, gpiok, 'k', 16, gpio070, gpio074, gpio098, 
+gpio_macro!( GPIOK, gpiok, 'k', 16, gpio070, gpio074, gpio098,
     gpio09c, gpio0a0, gpio0a4, gpio0a8, gpio0ac, gpio0b0,
     gpio0b4, gpio090, gpio094, gpio0b8, gpio0c8, [
     PK0: (pk0, 0, Tristate),
@@ -673,7 +681,7 @@ gpio_macro!( GPIOK, gpiok, 'k', 16, gpio070, gpio074, gpio098,
     PK7: (pk7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOL, gpiol, 'l', 24, gpio070, gpio074, gpio098, 
+gpio_macro!( GPIOL, gpiol, 'l', 24, gpio070, gpio074, gpio098,
     gpio09c, gpio0a0, gpio0a4, gpio0a8, gpio0ac, gpio0b0,
     gpio0b4, gpio090, gpio094, gpio0b8, gpio0c8, [
     PL0: (pl0, 0, Tristate),
@@ -687,7 +695,7 @@ gpio_macro!( GPIOL, gpiol, 'l', 24, gpio070, gpio074, gpio098,
 ]);
 
 // GPIO MNOP
-gpio_macro!( GPIOM, gpiom, 'm', 0, gpio078, gpio07c, gpio0e8, 
+gpio_macro!( GPIOM, gpiom, 'm', 0, gpio078, gpio07c, gpio0e8,
     gpio0ec, gpio0f0, gpio0f4, gpio0f8, gpio0fc, gpio100,
     gpio104, gpio0e0, gpio0e4, gpio0cc, gpio108, [
     PM0: (pm0, 0, Tristate),
@@ -700,7 +708,7 @@ gpio_macro!( GPIOM, gpiom, 'm', 0, gpio078, gpio07c, gpio0e8,
     PM7: (pm7, 7, Tristate),
 ]);
 
-gpio_macro!( GPION, gpion, 'n', 8, gpio078, gpio07c, gpio0e8, 
+gpio_macro!( GPION, gpion, 'n', 8, gpio078, gpio07c, gpio0e8,
     gpio0ec, gpio0f0, gpio0f4, gpio0f8, gpio0fc, gpio100,
     gpio104, gpio0e0, gpio0e4, gpio0cc, gpio108, [
     PN0: (pn0, 0, Tristate),
@@ -713,7 +721,7 @@ gpio_macro!( GPION, gpion, 'n', 8, gpio078, gpio07c, gpio0e8,
     PN7: (pn7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOO, gpioo, 'o', 16, gpio078, gpio07c, gpio0e8, 
+gpio_macro!( GPIOO, gpioo, 'o', 16, gpio078, gpio07c, gpio0e8,
     gpio0ec, gpio0f0, gpio0f4, gpio0f8, gpio0fc, gpio100,
     gpio104, gpio0e0, gpio0e4, gpio0cc, gpio108, [
     PO0: (po0, 0, Tristate),
@@ -726,7 +734,7 @@ gpio_macro!( GPIOO, gpioo, 'o', 16, gpio078, gpio07c, gpio0e8,
     PO7: (po7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOP, gpiop, 'p', 24, gpio078, gpio07c, gpio0e8, 
+gpio_macro!( GPIOP, gpiop, 'p', 24, gpio078, gpio07c, gpio0e8,
     gpio0ec, gpio0f0, gpio0f4, gpio0f8, gpio0fc, gpio100,
     gpio104, gpio0e0, gpio0e4, gpio0cc, gpio108, [
     PP0: (pp0, 0, Tristate),
@@ -740,7 +748,7 @@ gpio_macro!( GPIOP, gpiop, 'p', 24, gpio078, gpio07c, gpio0e8,
 ]);
 
 // GPIO QRST
-gpio_macro!( GPIOQ, gpioq, 'q', 0, gpio080, gpio084, gpio118, 
+gpio_macro!( GPIOQ, gpioq, 'q', 0, gpio080, gpio084, gpio118,
     gpio11c, gpio120, gpio124, gpio128, gpio12c, gpio130,
     gpio134, gpio110, gpio114, gpio0d0, gpio138, [
     PQ0: (pq0, 0, Tristate),
@@ -753,7 +761,7 @@ gpio_macro!( GPIOQ, gpioq, 'q', 0, gpio080, gpio084, gpio118,
     PQ7: (pq7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOR, gpior, 'r', 8, gpio080, gpio084, gpio118, 
+gpio_macro!( GPIOR, gpior, 'r', 8, gpio080, gpio084, gpio118,
     gpio11c, gpio120, gpio124, gpio128, gpio12c, gpio130,
     gpio134, gpio110, gpio114, gpio0d0, gpio138, [
     PR0: (pr0, 0, Tristate),
@@ -766,7 +774,7 @@ gpio_macro!( GPIOR, gpior, 'r', 8, gpio080, gpio084, gpio118,
     PR7: (pr7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOS, gpios, 's', 16, gpio080, gpio084, gpio118, 
+gpio_macro!( GPIOS, gpios, 's', 16, gpio080, gpio084, gpio118,
     gpio11c, gpio120, gpio124, gpio128, gpio12c, gpio130,
     gpio134, gpio110, gpio114, gpio0d0, gpio138, [
     PS0: (ps0, 0, Tristate),
@@ -779,7 +787,7 @@ gpio_macro!( GPIOS, gpios, 's', 16, gpio080, gpio084, gpio118,
     PS7: (ps7, 7, Tristate),
 ]);
 
-gpio_macro!( GPIOT, gpiot, 't', 24, gpio080, gpio084, gpio118, 
+gpio_macro!( GPIOT, gpiot, 't', 24, gpio080, gpio084, gpio118,
     gpio11c, gpio120, gpio124, gpio128, gpio12c, gpio130,
     gpio134, gpio110, gpio114, gpio0d0, gpio138, [
     PT0: (pt0, 0, Tristate),
@@ -793,7 +801,7 @@ gpio_macro!( GPIOT, gpiot, 't', 24, gpio080, gpio084, gpio118,
 ]);
 
 // GPIO U
-gpio_macro!( GPIOU, gpiou, 'u', 0, gpio088, gpio08c, gpio148, 
+gpio_macro!( GPIOU, gpiou, 'u', 0, gpio088, gpio08c, gpio148,
     gpio14c, gpio150, gpio154, gpio158, gpio15c, gpio160,
     gpio164, gpio140, gpio144, gpio0d4, gpio168, [
     PU0: (pu0, 0, Tristate),
