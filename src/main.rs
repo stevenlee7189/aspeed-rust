@@ -9,12 +9,17 @@ use aspeed_ddk::uart::{Config, UartController};
 use aspeed_ddk::watchdog::WdtController;
 use ast1060_pac::Peripherals;
 use ast1060_pac::{Wdt, Wdt1};
-
+use aspeed_ddk::gpio::{gpioa, gpiob, gpioh, gpiol, gpiom, Floating, GpioExt};
 use aspeed_ddk::ecdsa::AspeedEcdsa;
 use aspeed_ddk::hace_controller::HaceController;
 use aspeed_ddk::rsa::AspeedRsa;
 use aspeed_ddk::syscon::SysCon;
 use fugit::MillisDurationU32 as MilliSeconds;
+use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
+
+use aspeed_ddk::spi;
+use aspeed_ddk::spimonitor::{RegionInfo, SpiMonitor, SpimExtMuxSel};
+use ast1060_pac::{Scu, Spipf, Spipf1, Spipf2, Spipf3};
 
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
@@ -111,6 +116,26 @@ macro_rules! debug_halt {
     }};
 }
 
+fn test_gpio_flash_power(uart: &mut UartController<'_>) {
+    let mut delay = DummyDelay {};
+    if true {
+        /* Older demo board required this */
+        let _peripherals = unsafe { Peripherals::steal() };
+        let gpio = _peripherals.gpio;
+        let gpiol = gpiol::GPIOL::new(gpio).split();
+        uart.write_all(b"\r\n####### GPIO test #######\r\n")
+            .unwrap();
+
+        let mut pl2 = gpiol.pl2.into_push_pull_output();
+        pl2.set_high().unwrap();
+        uart.write_all(b"\r\nGPIOL2 set high\r\n").unwrap();
+        let mut pl3 = gpiol.pl3.into_push_pull_output();
+        pl3.set_high().unwrap();
+        uart.write_all(b"\r\nGPIOL3 set high\r\n").unwrap();
+        delay.delay_ns(1_000_000);
+    }
+}
+
 #[entry]
 fn main() -> ! {
     let peripherals = unsafe { Peripherals::steal() };
@@ -149,15 +174,20 @@ fn main() -> ! {
     run_hmac_tests(&mut uart_controller, &mut hace_controller);
 
     // Enable RSA and ECC
-    syscon.enable_rsa_ecc();
+    //syscon.enable_rsa_ecc();
 
-    let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
-    run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
+   // let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
+    //run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
 
-    let mut rsa = AspeedRsa::new(&secure, delay);
-    run_rsa_tests(&mut uart_controller, &mut rsa);
+    //let mut rsa = AspeedRsa::new(&secure, delay);
+    //run_rsa_tests(&mut uart_controller, &mut rsa);
 
-    test_wdt(&mut uart_controller);
+    //test_wdt(&mut uart_controller);
+    spi::spitest::test_fmc(&mut uart_controller);
+    spi::spitest::test_spi(&mut uart_controller);
+
+    test_gpio_flash_power(&mut uart_controller);
+    spi::spitest::test_spi2(&mut uart_controller);
 
     // Initialize the peripherals here if needed
     loop {

@@ -14,3 +14,5 @@ pub mod syscon;
 pub mod tests;
 pub mod uart;
 pub mod watchdog;
+pub mod astdebug;
+pub mod gpio;

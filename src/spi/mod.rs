@@ -15,6 +15,7 @@ pub mod fmccontroller;
 pub mod norflash;
 pub mod norflashblockdevice;
 pub mod spicontroller;
+pub mod spitest;
 
 #[derive(Debug)]
 
