@@ -5,16 +5,18 @@
 
 use core::sync::atomic::AtomicBool;
 // use core::arch::asm;
+use aspeed_ddk::timer::TimerController;
 use aspeed_ddk::uart::{Config, UartController};
 use aspeed_ddk::watchdog::WdtController;
 use ast1060_pac::Peripherals;
+use ast1060_pac::Timer;
 use ast1060_pac::{Wdt, Wdt1};
 
 use aspeed_ddk::ecdsa::AspeedEcdsa;
 use aspeed_ddk::hace_controller::HaceController;
 use aspeed_ddk::rsa::AspeedRsa;
 use aspeed_ddk::syscon::{ClockId, ResetId, SysCon};
-use fugit::MillisDurationU32 as MilliSeconds;
+use fugit::{MicrosDurationU32, MillisDurationU32 as MilliSeconds};
 
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
@@ -26,10 +28,28 @@ use proposed_traits::system_control::ResetControl;
 
 use cortex_m_rt::entry;
 use embedded_hal::delay::DelayNs;
+use embedded_hal_old::timer::CountDown;
 
 use core::ptr::{read_volatile, write_volatile};
 use cortex_m_rt::pre_init;
 use embedded_io::Write;
+
+fn test_timer_polling(uart: &mut UartController<'_>) {
+    let mut timer = TimerController::<Timer>::new(50); // 50 ticks/us
+    timer.try_start(MicrosDurationU32::millis(1000)).unwrap(); // 1s timeout
+
+    loop {
+        if let Ok(()) = timer.try_wait() {
+            // Timeout reached
+            writeln!(uart, "\r\nTime ISR triggered!").unwrap();
+
+            // Restart timer for next interval
+            timer.try_start(MicrosDurationU32::millis(1000)).unwrap();
+        } else {
+            // Still counting; do nothing
+        }
+    }
+}
 
 #[pre_init]
 unsafe fn pre_init() {
@@ -164,6 +184,8 @@ fn main() -> ! {
 
     test_wdt(&mut uart_controller);
 
+    writeln!(uart_controller, "\r\nTesting Timer Polling...").unwrap();
+    test_timer_polling(&mut uart_controller);
     // Initialize the peripherals here if needed
     loop {
         cortex_m::asm::wfi();
