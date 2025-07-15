@@ -78,7 +78,7 @@ dependencies = [
 [[package]]
 name = "ast1060-pac"
 version = "0.1.0"
-source = "git+https://github.com/stevenlee7189/ast1060-pac#6ea79574e999567e0bb014eddbac23bb9d8eade2"
+source = "git+https://github.com/AspeedTech-BMC/ast1060-pac#f6fd1c82a3d4ca05ed921ecac24356637ab53b7d"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",

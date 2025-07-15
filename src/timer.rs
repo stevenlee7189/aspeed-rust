@@ -141,7 +141,6 @@ impl<T: TimerInstance> CountDown for TimerController<T> {
         let ctrl_val = (1 << (4 * index)) | (1 << (4 * index + 2));
         self.gr.timerg030().write(|w| unsafe { w.bits(ctrl_val) });
 
-        self.auto_reload = false;
         Ok(())
     }
 
