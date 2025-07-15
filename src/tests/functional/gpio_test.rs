@@ -5,12 +5,17 @@ use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
 use embedded_io::Write;
 
 use crate::gpio::{gpioa, Floating, GpioExt};
+use crate::pinctrl;
 use crate::uart::UartController;
 
 pub fn test_gpioa(uart: &mut UartController<'_>) {
     let peripherals = unsafe { Peripherals::steal() };
     let gpio = peripherals.gpio;
 
+    pinctrl::Pinctrl::apply_pinctrl_group(pinctrl::PINCTRL_GPIOA0);
+    pinctrl::Pinctrl::apply_pinctrl_group(pinctrl::PINCTRL_GPIOA1);
+    pinctrl::Pinctrl::apply_pinctrl_group(pinctrl::PINCTRL_GPIOA3);
+    pinctrl::Pinctrl::apply_pinctrl_group(pinctrl::PINCTRL_GPIOA4);
     let gpioa = gpioa::GPIOA::new(gpio).split();
     uart.write_all(b"\r\n####### GPIO test #######\r\n")
         .unwrap();
