@@ -43,7 +43,7 @@ pub fn test_timer_isr(uart: &mut UartController<'_>) {
 fn timer_callback() {
     unsafe {
         if let Some(uart) = UART_PTR.as_mut() {
-            let _ = uart.write_all(b"[CB] Triggerred!\r\n");
+            let _ = uart.write_all(b"[CB] Triggered!\r\n");
         }
     }
 }
