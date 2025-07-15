@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::timer::TimerController;
+use crate::timer::{TimerController, TimerType};
 use crate::uart::UartController;
 use ast1060_pac::Timer;
 use cortex_m::peripheral::NVIC;
@@ -26,7 +26,7 @@ pub extern "C" fn timer() {
 
 pub fn test_timer_isr(uart: &mut UartController<'_>) {
     let mut timer = TimerController::<Timer>::new(50); // tick_per_us
-    timer.set_callback(Some(timer_callback), true); // true = periodic, false = one-shot
+    timer.set_callback(Some(timer_callback), TimerType::Periodic);
     timer.try_start(MicrosDurationU32::millis(1000)).unwrap();
 
     unsafe {

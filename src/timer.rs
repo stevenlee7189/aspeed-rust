@@ -6,7 +6,7 @@ use embedded_hal_old::timer::{Cancel, CountDown, Periodic};
 use fugit::MicrosDurationU32 as MicroSeconds;
 
 /// Timer type: One-shot or periodic
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TimerType {
     OneShot,
     Periodic,
@@ -50,7 +50,7 @@ pub struct TimerController<T: TimerInstance> {
     gr: &'static ast1060_pac::timerg::RegisterBlock,
     tick_per_us: u32,
     callback: Option<fn()>,
-    auto_reload: bool,
+    auto_reload: TimerType,
     _marker: PhantomData<T>,
 }
 
@@ -69,7 +69,7 @@ impl<T: TimerInstance> TimerController<T> {
             gr: T::gr(),
             tick_per_us,
             callback: None,
-            auto_reload: false,
+            auto_reload: TimerType::OneShot,
             _marker: PhantomData,
         }
     }
@@ -94,7 +94,7 @@ impl<T: TimerInstance> TimerController<T> {
         let index = T::index();
         self.gr.timerg034().write(|w| unsafe { w.bits(1 << index) });
 
-        if !self.auto_reload {
+        if self.auto_reload == TimerType::OneShot {
             self.stop();
         }
 
@@ -103,8 +103,7 @@ impl<T: TimerInstance> TimerController<T> {
         }
     }
 
-    /// (Optional) assign a callback for interrupt
-    pub fn set_callback(&mut self, cb: Option<fn()>, periodic: bool) {
+    pub fn set_callback(&mut self, cb: Option<fn()>, periodic: TimerType) {
         self.callback = cb;
         self.auto_reload = periodic;
     }
