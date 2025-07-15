@@ -2,7 +2,7 @@
 
 //! GPIO pins
 
-use ast1060_pac::{Gpio, Scu};
+use ast1060_pac::Gpio;
 use core::marker::PhantomData;
 use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
 
@@ -197,91 +197,9 @@ macro_rules! gpio_macro {
                 }
 
                 impl<MODE> $PXi<MODE> {
-                    pub fn set_up_multifunc_pin_ctrl(self) {
-                        let p = unsafe{ &*Scu::ptr() };
-                        match $x {
-                            'a' | 'b' | 'c' | 'd' => {
-                                p.scu410().modify(|r, w| unsafe {
-                                    w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                });
-                                p.scu4b0().modify(|r, w| unsafe {
-                                    w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                });
-                                p.scu690().modify(|r, w| unsafe {
-                                    w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                });
-                            },
-                            'e' | 'f' | 'g' | 'h' => {
-                                p.scu414().modify(|r, w| unsafe {
-                                    w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                });
-                                if $x != 'h' || $i < 6 {
-                                    p.scu4b4().modify(|r, w| unsafe {
-                                        w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                    });
-                                    p.scu694().modify(|r, w| unsafe {
-                                        w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                    });
-                                }
-                            },
-                            'i' | 'j' | 'k' | 'l' => {
-                                p.scu418().modify(|r, w| unsafe {
-                                    w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                });
-                                if $x == 'j' || $x == 'k' || ($x == 'l' && $i > 3) {
-                                    p.scu4b8().modify(|r, w| unsafe {
-                                        w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                    });
-                                }
-                                if $x == 'l' && $i > 3 {
-                                    p.scu698().modify(|r, w| unsafe {
-                                        w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                    });
-                                }
-                            },
-                            'm' | 'n' | 'o' | 'p' => {
-                                p.scu41c().modify(|r, w| unsafe {
-                                    w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                });
-                                if ($x == 'n' && $i != 2) || $x == 'o' || $x == 'p' {
-                                    p.scu4bc().modify(|r, w| unsafe {
-                                        w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                    });
-                                }
-                                if ($x == 'o' && $i > 3) || ($x == 'p' && ($i == 0 || $i > 5)) {
-                                    p.scu69c().modify(|r, w| unsafe {
-                                        w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                    });
-                                }
-                            },
-                            'q' | 'r' | 's' => {
-                                p.scu430().modify(|r, w| unsafe {
-                                    w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                });
-                                if $x == 'q' && $i < 5 {
-                                    p.scu6b0().modify(|r, w| unsafe {
-                                        w.bits(r.bits() & !(1u32 << ($pos + $i)))
-                                    });
-                                }
-                            },
-                            't' => {
-                                p.scu430().modify(|r, w| unsafe {
-                                    w.bits(r.bits() | (1u32 << ($pos + $i)))
-                                });
-                            },
-                            'u' => {
-                                p.scu434().modify(|r, w| unsafe {
-                                    w.bits(r.bits() | (1u32 << ($pos + $i)))
-                                });
-                            },
-                            _ => {},
-                        }
-                    }
-
                     /// Configures the pin to operate as a pulled down input pin
                     #[must_use]
                     pub fn into_pull_down_input(self) -> $PXi<Input<PullDown>> {
-                        self.set_up_multifunc_pin_ctrl();
                         let p = unsafe{ &*Gpio::ptr() };
                         //dir
                         p.$dir_reg().modify(|r, w| unsafe {
@@ -297,7 +215,6 @@ macro_rules! gpio_macro {
                     /// Configures the pin to operate as a pulled up input pin
                     #[must_use]
                     pub fn into_pull_up_input(self) -> $PXi<Input<PullUp>> {
-                        self.set_up_multifunc_pin_ctrl();
                         let p = unsafe{ &*Gpio::ptr() };
                         //dir
                         p.$dir_reg().modify(|r, w| unsafe {
@@ -313,7 +230,6 @@ macro_rules! gpio_macro {
                     /// Configures the pin to operate as an open drain output pin
                     #[must_use]
                     pub fn into_open_drain_output<ODM>(self) -> $PXi<Output<OpenDrain<ODM>>> where ODM:OpenDrainMode {
-                        self.set_up_multifunc_pin_ctrl();
                         let p = unsafe { &*Gpio::ptr()};
                         //data
                         // 0 for active low; 1 for active high??
@@ -330,7 +246,6 @@ macro_rules! gpio_macro {
                     /// Configures the pin to operate as an push pull output pin
                     #[must_use]
                     pub fn into_push_pull_output(self) -> $PXi<Output<PushPull>> {
-                        self.set_up_multifunc_pin_ctrl();
                         let p = unsafe { &*Gpio::ptr()};
                         //dir
                         p.$dir_reg().modify(|r, w| unsafe {
