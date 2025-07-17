@@ -5,17 +5,17 @@
 
 use core::sync::atomic::AtomicBool;
 // use core::arch::asm;
+use aspeed_ddk::ecdsa::AspeedEcdsa;
+use aspeed_ddk::gpio::{gpioa, gpiob, gpioh, gpiol, gpiom, Floating, GpioExt};
+use aspeed_ddk::hace_controller::HaceController;
+use aspeed_ddk::rsa::AspeedRsa;
+use aspeed_ddk::syscon::SysCon;
 use aspeed_ddk::uart::{Config, UartController};
 use aspeed_ddk::watchdog::WdtController;
 use ast1060_pac::Peripherals;
 use ast1060_pac::{Wdt, Wdt1};
-use aspeed_ddk::gpio::{gpioa, gpiob, gpioh, gpiol, gpiom, Floating, GpioExt};
-use aspeed_ddk::ecdsa::AspeedEcdsa;
-use aspeed_ddk::hace_controller::HaceController;
-use aspeed_ddk::rsa::AspeedRsa;
-use aspeed_ddk::syscon::SysCon;
-use fugit::MillisDurationU32 as MilliSeconds;
 use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
+use fugit::MillisDurationU32 as MilliSeconds;
 
 use aspeed_ddk::spi;
 use aspeed_ddk::spimonitor::{RegionInfo, SpiMonitor, SpimExtMuxSel};
@@ -176,18 +176,21 @@ fn main() -> ! {
     // Enable RSA and ECC
     //syscon.enable_rsa_ecc();
 
-   // let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
+    // let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
     //run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
 
     //let mut rsa = AspeedRsa::new(&secure, delay);
     //run_rsa_tests(&mut uart_controller, &mut rsa);
 
     //test_wdt(&mut uart_controller);
-    spi::spitest::test_fmc(&mut uart_controller);
-    spi::spitest::test_spi(&mut uart_controller);
+    let test_spicontroller = false;
+    if test_spicontroller {
+        spi::spitest::test_fmc(&mut uart_controller);
+        spi::spitest::test_spi(&mut uart_controller);
 
-    test_gpio_flash_power(&mut uart_controller);
-    spi::spitest::test_spi2(&mut uart_controller);
+        test_gpio_flash_power(&mut uart_controller);
+        spi::spitest::test_spi2(&mut uart_controller);
+    }
 
     // Initialize the peripherals here if needed
     loop {

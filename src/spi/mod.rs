@@ -60,11 +60,24 @@ pub trait SpiBusWithCs: SpiBus<u8, Error = SpiError> + ErrorType<Error = SpiErro
 }
 
 // Constants (unchanged)
+const SPI_CONF_CE0_ENABLE_WRITE_SHIFT: u32 = 16;
+
+const SPI_CTRL_FREQ_MASK: u32 = 0x0F00_0F00;
+const SPI_CTRL_CEX_SPI_CMD_SHIFT: u32 = 16;
+const SPI_CTRL_CEX_SPI_CMD_MASK: u32 = 0xff;
+const SPI_CTRL_CEX_DUMMY_SHIFT: u32 = 6;
+const SPI_CTRL_CEX_DUMMY_MASK: u32 = 0x3;
+const SPI_CTRL_CEX_4BYTE_MODE_SET: u32 = 0x11; // bit0: 4byte mode, bit4: 4byte mode cmd
+
+const SPI_DMA_DELAY_SHIFT: u32 = 8;
+const SPI_DMA_DELAY_MASK: u32 = 0xff;
+const SPI_DMA_CLK_FREQ_SHIFT: u32 = 16;
+const SPI_DMA_CLK_FREQ_MASK: u32 = 0xf;
+
 const SPI_DMA_GET_REQ_MAGIC: u32 = 0xaeed_0000;
 const SPI_DMA_DISCARD_REQ_MAGIC: u32 = 0xdeea_0000;
 const SPI_DMA_RAM_MAP_BASE: u32 = 0x8000_0000;
 const SPI_DMA_FLASH_MAP_BASE: u32 = 0x6000_0000;
-const SPI_CTRL_FREQ_MASK: u32 = 0x0F00_0F00;
 
 const SPI_CALIB_LEN: usize = 0x400;
 
@@ -79,10 +92,6 @@ const SPI_DMA_REQUEST: u32 = 1 << 31;
 const SPI_DMA_GRANT: u32 = 1 << 30;
 const SPI_DMA_CALIB_MODE: u32 = 1 << 3;
 const SPI_DMA_CALC_CKSUM: u32 = 1 << 2;
-const SPI_DMA_DELAY_SHIFT: u32 = 8;
-const SPI_DMA_DELAY_MASK: u32 = 0xff;
-const SPI_DMA_CLK_FREQ_SHIFT: u32 = 16;
-const SPI_DMA_CLK_FREQ_MASK: u32 = 0xf;
 
 const SPI_DMA_ENABLE: u32 = 1 << 0;
 const SPI_DMA_STATUS: u32 = 1 << 11;
@@ -383,6 +392,11 @@ pub static mut GPIO_ORI_VAL: [u32; 4] = [0; 4];
 fn get_gpio_ori_val() -> [u32; 4] {
     unsafe { GPIO_ORI_VAL }
 }
+const PIN_SPIM0_CLK_OUT_BIT: u32 = 7;
+const PIN_SPIM1_CLK_OUT_BIT: u32 = 21;
+const PIN_SPIM2_CLK_OUT_BIT: u32 = 3;
+const PIN_SPIM3_CLK_OUT_BIT: u32 = 17;
+
 pub fn spim_proprietary_pre_config() {
     let scu = unsafe { &*ast1060_pac::Scu::ptr() };
     let gpio = unsafe { &*ast1060_pac::Gpio::ptr() };
@@ -405,24 +419,24 @@ pub fn spim_proprietary_pre_config() {
 
         match idx {
             0 => {
-                modify_reg!(scu.scu690(), 7, clear);
+                modify_reg!(scu.scu690(), PIN_SPIM0_CLK_OUT_BIT, clear);
                 *ori_val = gpio.gpio004().read().bits();
-                modify_reg!(gpio.gpio004(), 7, clear);
+                modify_reg!(gpio.gpio004(), PIN_SPIM0_CLK_OUT_BIT, clear);
             }
             1 => {
-                modify_reg!(scu.scu690(), 21, clear);
+                modify_reg!(scu.scu690(), PIN_SPIM1_CLK_OUT_BIT, clear);
                 *ori_val = gpio.gpio004().read().bits();
-                modify_reg!(gpio.gpio004(), 21, clear);
+                modify_reg!(gpio.gpio004(), PIN_SPIM1_CLK_OUT_BIT, clear);
             }
             2 => {
-                modify_reg!(scu.scu694(), 3, clear);
+                modify_reg!(scu.scu694(), PIN_SPIM2_CLK_OUT_BIT, clear);
                 *ori_val = gpio.gpio024().read().bits();
-                modify_reg!(gpio.gpio024(), 3, clear);
+                modify_reg!(gpio.gpio024(), PIN_SPIM2_CLK_OUT_BIT, clear);
             }
             3 => {
-                modify_reg!(scu.scu694(), 17, clear);
+                modify_reg!(scu.scu694(), PIN_SPIM3_CLK_OUT_BIT, clear);
                 *ori_val = gpio.gpio024().read().bits();
-                modify_reg!(gpio.gpio024(), 17, clear);
+                modify_reg!(gpio.gpio024(), PIN_SPIM3_CLK_OUT_BIT, clear);
             }
             _ => (),
         }
@@ -436,7 +450,6 @@ pub fn spim_proprietary_post_config() {
     // If no SPIM in use, return
     let bits = scu.scu0f0().read().bits();
     if bits.trailing_zeros() >= 3 {
-        //if scu.scu0f0().read().bits() & 0x7 == 0 {
         return;
     }
 
@@ -454,38 +467,38 @@ pub fn spim_proprietary_post_config() {
             0 => {
                 gpio.gpio004().modify(|r, w| unsafe {
                     let mut current = r.bits();
-                    current &= !(1 << 7);
+                    current &= !(1 << PIN_SPIM0_CLK_OUT_BIT);
                     current |= ori_val;
                     w.bits(current)
                 });
-                modify_reg!(scu.scu690(), 7, clear);
+                modify_reg!(scu.scu690(), PIN_SPIM0_CLK_OUT_BIT, clear);
             }
             1 => {
                 gpio.gpio004().modify(|r, w| unsafe {
                     let mut current = r.bits();
-                    current &= !(1 << 21);
+                    current &= !(1 << PIN_SPIM1_CLK_OUT_BIT);
                     current |= ori_val;
                     w.bits(current)
                 });
-                modify_reg!(gpio.gpio004(), 21, clear);
+                modify_reg!(gpio.gpio004(), PIN_SPIM1_CLK_OUT_BIT, clear);
             }
             2 => {
                 gpio.gpio024().modify(|r, w| unsafe {
                     let mut current = r.bits();
-                    current &= !(1 << 3);
+                    current &= !(1 << PIN_SPIM2_CLK_OUT_BIT);
                     current |= ori_val;
                     w.bits(current)
                 });
-                modify_reg!(scu.scu694(), 3, clear);
+                modify_reg!(scu.scu694(), PIN_SPIM2_CLK_OUT_BIT, clear);
             }
             3 => {
                 gpio.gpio024().modify(|r, w| unsafe {
                     let mut current = r.bits();
-                    current &= !(1 << 17);
+                    current &= !(1 << PIN_SPIM3_CLK_OUT_BIT);
                     current |= ori_val;
                     w.bits(current)
                 });
-                modify_reg!(scu.scu694(), 17, clear);
+                modify_reg!(scu.scu694(), PIN_SPIM3_CLK_OUT_BIT, clear);
             }
             _ => (),
         }

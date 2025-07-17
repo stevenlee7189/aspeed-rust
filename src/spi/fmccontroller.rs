@@ -15,7 +15,11 @@ use super::{
 use super::{SPI_DMA_TRIGGER_LEN, SPI_NOR_DATA_DIRECT_READ, SPI_NOR_DATA_DIRECT_WRITE};
 
 use crate::dbg;
-use crate::spi::{SPI_DMA_CLK_FREQ_MASK, SPI_DMA_CLK_FREQ_SHIFT, SPI_DMA_DELAY_MASK, SPI_DMA_DELAY_SHIFT};
+use crate::spi::{
+    SPI_CONF_CE0_ENABLE_WRITE_SHIFT, SPI_CTRL_CEX_4BYTE_MODE_SET, SPI_CTRL_CEX_DUMMY_SHIFT,
+    SPI_CTRL_CEX_SPI_CMD_MASK, SPI_CTRL_CEX_SPI_CMD_SHIFT, SPI_DMA_CLK_FREQ_MASK,
+    SPI_DMA_CLK_FREQ_SHIFT, SPI_DMA_DELAY_MASK, SPI_DMA_DELAY_SHIFT,
+};
 use crate::{common::DummyDelay, spi::norflash::SpiNorData, uart::UartController};
 use embedded_hal::{
     delay::DelayNs,
@@ -79,7 +83,9 @@ impl<'a> FmcController<'a> {
         for cs in 0..self.spi_config.max_cs {
             self.regs.fmc000().modify(|r, w| unsafe {
                 let current = r.bits();
-                w.bits(current | (1 << (16 + cs)))
+                w.bits(
+                    current | (1 << (SPI_CONF_CE0_ENABLE_WRITE_SHIFT + u32::try_from(cs).unwrap())),
+                )
             });
 
             self.spi_data.cmd_mode[cs].user = ASPEED_SPI_USER;
@@ -235,8 +241,10 @@ impl<'a> FmcController<'a> {
             get_addr_buswidth(op_info.mode as u32).into(),
             op_info.dummy_cycle,
         );
-        let read_cmd =
-            (io_mode | ((op_info.opcode & 0xff) << 16) | (dummy as u32)) | ASPEED_SPI_NORMAL_READ;
+        let read_cmd = (io_mode
+            | ((op_info.opcode & SPI_CTRL_CEX_SPI_CMD_MASK) << SPI_CTRL_CEX_SPI_CMD_SHIFT)
+            | (dummy as u32))
+            | ASPEED_SPI_NORMAL_READ;
         self.spi_data.cmd_mode[cs].normal_read = read_cmd;
         dbg!(
             self,
@@ -252,7 +260,7 @@ impl<'a> FmcController<'a> {
         if op_info.addr_len == 4 {
             self.regs.fmc004().modify(|r, w| unsafe {
                 let current = r.bits();
-                w.bits(current | (0x11 << cs))
+                w.bits(current | (SPI_CTRL_CEX_4BYTE_MODE_SET << cs))
             });
         }
         if matches!(self.spi_config.ctrl_type, CtrlType::HostSpi) {
@@ -273,8 +281,10 @@ impl<'a> FmcController<'a> {
     fn spi_nor_write_init(&mut self, cs: usize, op_info: &SpiNorData) {
         let io_mode = spi_io_mode(op_info.mode);
         let dummy = 0;
-        let write_cmd =
-            (io_mode | ((op_info.opcode & 0xff) << 16) | dummy) | ASPEED_SPI_NORMAL_WRITE;
+        let write_cmd = (io_mode
+            | ((op_info.opcode & SPI_CTRL_CEX_SPI_CMD_MASK) << SPI_CTRL_CEX_SPI_CMD_SHIFT)
+            | dummy)
+            | ASPEED_SPI_NORMAL_WRITE;
         self.spi_data.cmd_mode[cs].normal_write = write_cmd;
     }
 
@@ -643,11 +653,11 @@ impl<'a> FmcController<'a> {
         // Construct control value
         let mut ctrl = self.spi_data.cmd_mode[cs].normal_read & SPI_CTRL_FREQ_MASK;
         ctrl |= spi_io_mode(op.mode);
-        ctrl |= op.opcode << 16;
+        ctrl |= (op.opcode & SPI_CTRL_CEX_SPI_CMD_MASK) << SPI_CTRL_CEX_SPI_CMD_SHIFT;
 
         // Calculate dummy cycle bits
         let bus_width = get_addr_buswidth(op.mode as u32);
-        let dummy = (op.dummy_cycle / u32::from(8 / bus_width)) << 6;
+        let dummy = (op.dummy_cycle / u32::from(8 / bus_width)) << SPI_CTRL_CEX_DUMMY_SHIFT;
         ctrl |= dummy;
         ctrl |= ASPEED_SPI_NORMAL_READ;
 
@@ -706,8 +716,8 @@ impl<'a> FmcController<'a> {
         let mut ctrl_reg = self.spi_data.cmd_mode[cs].normal_write & SPI_CTRL_FREQ_MASK;
         let bus_width = get_addr_buswidth(op.mode as u32);
         ctrl_reg |= spi_io_mode(op.mode); // you must implement this
-        ctrl_reg |= op.opcode << 16;
-        ctrl_reg |= (op.dummy_cycle / u32::from(8 / bus_width)) << 6;
+        ctrl_reg |= (op.opcode & SPI_CTRL_CEX_SPI_CMD_MASK) << SPI_CTRL_CEX_SPI_CMD_SHIFT;
+        ctrl_reg |= (op.dummy_cycle / u32::from(8 / bus_width)) << SPI_CTRL_CEX_DUMMY_SHIFT;
         ctrl_reg |= ASPEED_SPI_NORMAL_WRITE;
 
         cs_ctrlreg_w!(self, cs, ctrl_reg);

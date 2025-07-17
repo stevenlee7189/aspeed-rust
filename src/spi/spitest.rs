@@ -210,7 +210,7 @@ pub fn test_cs<D: SpiNorDevice<Error = E>, E>(
     test_write: bool,
 ) {
     let mut delay1 = DummyDelay {};
-    
+
     let wbuf: &mut [u8] = unsafe { SPI_NC_BUFFER[WRITE_IDX].as_mut_slice(0, len) };
     let devid = &dev_idx;
     let ptr_write: *mut u8 = wbuf.as_mut_ptr();
