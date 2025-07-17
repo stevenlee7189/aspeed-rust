@@ -1,7 +1,14 @@
+// Licensed under the Apache-2.0 license
+
 use super::device::ChipSelectDevice;
 use super::fmccontroller::FmcController;
-use super::norflash::*;
-use super::*;
+use super::norflash::{
+    Jesd216Mode, SpiNorData, SpiNorDevice, SPI_NOR_CMD_QREAD, SPI_NOR_CMD_READ_FAST_4B,
+};
+use super::{
+    norflash, CommandMode, CtrlType, SpiConfig, SpiData, SpiDecodeAddress,
+    SPI_NOR_DATA_DIRECT_READ, SPI_NOR_DATA_DIRECT_WRITE,
+};
 use crate::common::{DmaBuffer, DummyDelay};
 use crate::spi::norflashblockdevice;
 use crate::spi::norflashblockdevice::{BlockAddrUsize, NorFlashBlockDevice};
@@ -16,23 +23,23 @@ use embedded_hal::spi::SpiDevice;
 use embedded_io::Write;
 use proposed_traits::block_device::{BlockDevice, BlockRange};
 
-pub const FMC_CTRL_BASE: usize = 0x7e620000;
-pub const FMC_MMAP_BASE: usize = 0x80000000;
+pub const FMC_CTRL_BASE: usize = 0x7e62_0000;
+pub const FMC_MMAP_BASE: usize = 0x8000_0000;
 
-pub const SPI0_CTRL_BASE: usize = 0x7e630000;
-pub const SPI0_MMAP_BASE: usize = 0x90000000;
+pub const SPI0_CTRL_BASE: usize = 0x7e63_0000;
+pub const SPI0_MMAP_BASE: usize = 0x9000_0000;
 
-pub const SPI1_CTRL_BASE: usize = 0x7e640000;
-pub const SPI1_MMAP_BASE: usize = 0xb0000000;
+pub const SPI1_CTRL_BASE: usize = 0x7e64_0000;
+pub const SPI1_MMAP_BASE: usize = 0xb000_0000;
 const SCU_BASE: usize = 0x7E6E_2000;
 pub const CTRL_REG_SIZE: usize = 0xc4;
 
-pub const SPIPF1_BASE: usize = 0x7e791000;
-pub const SPIPF2_BASE: usize = 0x7e792000;
-pub const SPIPF3_BASE: usize = 0x7e793000;
-pub const SPIPF4_BASE: usize = 0x7e794000;
+pub const SPIPF1_BASE: usize = 0x7e79_1000;
+pub const SPIPF2_BASE: usize = 0x7e79_2000;
+pub const SPIPF3_BASE: usize = 0x7e79_3000;
+pub const SPIPF4_BASE: usize = 0x7e79_4000;
 
-pub const GPIO_BASE: usize = 0x7e780000;
+pub const GPIO_BASE: usize = 0x7e78_0000;
 
 enum DeviceId {
     FmcCs0Idx,

@@ -399,14 +399,14 @@ impl<'a> FmcController<'a> {
 
                 self.apply_clock_settings(cs, freq_to_use);
                 return true;
-            } else {
-                dbg!(self, "Cannot get good calibration point.");
             }
+            dbg!(self, "Cannot get good calibration point.");
         }
 
         false
     }
 
+    #[allow(clippy::unused_self)]
     fn pick_best_delay(&self, calib_res: &[u8]) -> Option<(u32, u32)> {
         let calib_point = get_mid_point_of_longest_one(calib_res);
         if calib_point < 0 {

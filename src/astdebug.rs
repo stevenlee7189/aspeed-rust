@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use crate::uart::UartController;
 use embedded_io::Write;
 
@@ -9,7 +11,7 @@ pub fn print_array_u32(uart: &mut UartController<'_>, data: &[u32]) {
         } else {
             write!(uart, " ").unwrap();
         }
-        write!(uart, "{:08x}", dw).unwrap();
+        write!(uart, "{dw:08x}").unwrap();
     }
     writeln!(uart, "\r").unwrap();
 }
@@ -22,7 +24,7 @@ pub fn print_array_u8(uart: &mut UartController<'_>, data: &[u8]) {
         } else {
             write!(uart, " ").unwrap();
         }
-        write!(uart, "{:02x}", b).unwrap();
+        write!(uart, "{b:02x}").unwrap();
     }
     writeln!(uart, "\r").unwrap();
 }
@@ -37,7 +39,7 @@ pub fn print_reg_u8(uart: &mut UartController<'_>, reg_base: usize, size: usize)
         } else {
             write!(uart, ", ").unwrap();
         }
-        write!(uart, "0x{:02x}", b).unwrap();
+        write!(uart, "0x{b:02x}").unwrap();
     }
     writeln!(uart, "\r").unwrap();
 }
@@ -53,7 +55,7 @@ pub fn print_reg_u32(uart: &mut UartController<'_>, reg_base: usize, size: usize
         } else {
             write!(uart, ", ").unwrap();
         }
-        write!(uart, "0x{:08x}", word).unwrap();
+        write!(uart, "0x{word:08x}").unwrap();
     }
 
     writeln!(uart, "\r").unwrap();
