@@ -3,6 +3,7 @@
 #![cfg_attr(not(test), no_std)]
 pub mod common;
 pub mod ecdsa;
+pub mod gpio;
 pub mod hace_controller;
 pub mod hash;
 pub mod hmac;
