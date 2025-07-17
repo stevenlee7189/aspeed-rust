@@ -14,6 +14,11 @@ use aspeed_ddk::uart::{Config, UartController};
 use aspeed_ddk::watchdog::WdtController;
 use ast1060_pac::Peripherals;
 use ast1060_pac::{Wdt, Wdt1};
+
+use aspeed_ddk::ecdsa::AspeedEcdsa;
+use aspeed_ddk::hace_controller::HaceController;
+use aspeed_ddk::rsa::AspeedRsa;
+use aspeed_ddk::syscon::{ClockId, ResetId, SysCon};
 use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
 use fugit::MillisDurationU32 as MilliSeconds;
 
@@ -26,6 +31,8 @@ use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
 use aspeed_ddk::tests::functional::hmac_test::run_hmac_tests;
 use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
 use panic_halt as _;
+
+use proposed_traits::system_control::ResetControl;
 
 use cortex_m_rt::entry;
 use embedded_hal::delay::DelayNs;
@@ -162,10 +169,13 @@ fn main() -> ! {
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
-    // Enable HACE (Hash and Crypto Engine)
     let delay = DummyDelay;
     let mut syscon = SysCon::new(delay.clone(), scu);
-    syscon.enable_hace();
+
+    // Enable HACE (Hash and Crypto Engine)
+    let _ = syscon.enable_clock(ClockId::ClkYCLK as u8);
+    let reset_id = ResetId::RstHACE;
+    let _ = syscon.reset_deassert(&reset_id);
 
     let mut hace_controller = HaceController::new(&hace);
 
@@ -174,7 +184,7 @@ fn main() -> ! {
     run_hmac_tests(&mut uart_controller, &mut hace_controller);
 
     // Enable RSA and ECC
-    //syscon.enable_rsa_ecc();
+    let _ = syscon.enable_clock(ClockId::ClkRSACLK as u8);
 
     // let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
     //run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
