@@ -51,10 +51,10 @@ enum DeviceId {
 }
 
 // user define
-pub const FMC_CS0_CAPACITY: usize = 0x100000;
-pub const FMC_CS1_CAPACITY: usize = 0x100000;
-pub const SPI_CS0_CAPACITY: usize = 0x4000000; // 64M
-pub const SPI_CS1_CAPACITY: usize = 0x4000000;
+pub const FMC_CS0_CAPACITY: usize = 0x10_0000;
+pub const FMC_CS1_CAPACITY: usize = 0x10_0000;
+pub const SPI_CS0_CAPACITY: usize = 0x400_0000; // 64M
+pub const SPI_CS1_CAPACITY: usize = 0x400_0000;
 
 /* macronix MX25L8006E Flash device info */
 const MACRONIX_PAGE_SIZE: usize = 256;
