@@ -5,11 +5,7 @@
 
 use core::sync::atomic::AtomicBool;
 // use core::arch::asm;
-use aspeed_ddk::ecdsa::AspeedEcdsa;
 use aspeed_ddk::gpio::{gpioa, gpiob, gpioh, gpiol, gpiom, Floating, GpioExt};
-use aspeed_ddk::hace_controller::HaceController;
-use aspeed_ddk::rsa::AspeedRsa;
-use aspeed_ddk::syscon::SysCon;
 use aspeed_ddk::uart::{Config, UartController};
 use aspeed_ddk::watchdog::WdtController;
 use ast1060_pac::Peripherals;
