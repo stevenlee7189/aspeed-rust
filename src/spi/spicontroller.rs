@@ -15,6 +15,7 @@ use super::{
 use super::{SPI_DMA_TRIGGER_LEN, SPI_NOR_DATA_DIRECT_READ, SPI_NOR_DATA_DIRECT_WRITE};
 
 use crate::dbg;
+use crate::spi::{SPI_DMA_CLK_FREQ_MASK, SPI_DMA_CLK_FREQ_SHIFT, SPI_DMA_DELAY_MASK, SPI_DMA_DELAY_SHIFT};
 use crate::{common::DummyDelay, spi::norflash::SpiNorData, uart::UartController};
 
 use embedded_hal::{
@@ -300,89 +301,85 @@ impl<'a> SpiController<'a> {
         }
     }
 
-    pub fn timing_calibration(&mut self, cs_input: usize) {
-        let max_freq = self.spi_config.frequency;
-        let cs = cs_input;
+    pub fn timing_calibration(&mut self, cs: usize) {
+        if self.skip_calibration(cs) {
+            return;
+        }
 
-        dbg!(
-            self,
-            "Timing calibration for cs={} max_freq={}",
-            cs,
-            max_freq
-        );
+        let mut check_buf = [0u8; SPI_CALIB_LEN];
+        self.load_flash_calibration_data(cs, &mut check_buf);
 
+        if !spi_calibration_enable(&check_buf) {
+            dbg!(self, "Flash data is monotonous, skip calibration");
+            self.apply_clock_settings(cs, self.spi_config.frequency);
+            return;
+        }
+
+        let gold_checksum = self.aspeed_spi_dma_checksum(0, 0);
+        let calib_passed = self.run_timing_sweep(cs, gold_checksum);
+
+        if !calib_passed {
+            dbg!(self, "Timing sweep failed, using max_freq");
+            self.apply_clock_settings(cs, self.spi_config.frequency);
+        }
+    }
+
+    fn skip_calibration(&mut self, cs: usize) -> bool {
         if self.spi_config.timing_calibration_disabled {
             dbg!(self, "Timing calibration disabled by config");
-            self.apply_clock_settings(cs, max_freq);
-            return;
+            self.apply_clock_settings(cs, self.spi_config.frequency);
+            return true;
         }
 
-        // Read current timing control register for CS, skip if non-zero (already calibrated)
-        let reg_val = if cs == 0 {
-            self.regs.spi094().read().bits()
-        } else if cs == 1 {
-            self.regs.spi098().read().bits()
-        } else {
-            return;
+        let already_calibrated = match cs {
+            0 => self.regs.spi094().read().bits(),
+            1 => self.regs.spi098().read().bits(),
+            _ => return true, // invalid CS
         };
 
-        if reg_val != 0 {
+        if already_calibrated != 0 {
             dbg!(self, "Calibration already executed for cs {}", cs);
-            self.apply_clock_settings(cs, max_freq);
-            return;
+            self.apply_clock_settings(cs, self.spi_config.frequency);
+            return true;
         }
-
+        
         // Skip if mux master_idx != 0 and cs != 0 (as per original logic)
         if self.spi_config.master_idx != 0 && cs != 0 {
-            self.apply_clock_settings(cs, max_freq);
-            return;
+            self.apply_clock_settings(cs, self.spi_config.frequency);
+            return true;
         }
 
-        // Read ctrl register to clear frequency bits
+        // Clear frequency bits
         let mut reg_val = cs_ctrlreg_r!(self, cs);
-
         reg_val &= !SPI_CTRL_FREQ_MASK;
-
         cs_ctrlreg_w!(self, cs, reg_val);
 
-        // Allocate buffers (replace with static buffers or heap allocator)
-        let mut check_buf = [0u8; SPI_CALIB_LEN];
-        let mut calib_res = [0u8; 6 * 17];
+        false
+    }
 
-        // Copy flash calibration data from mapped address + offset
+    fn load_flash_calibration_data(&self, cs: usize, buf: &mut [u8]) {
         unsafe {
             let flash_ptr = self.spi_data.decode_addr[cs].start as *const u8;
             core::ptr::copy_nonoverlapping(
                 flash_ptr.add(self.spi_config.timing_calibration_start_off as usize),
-                check_buf.as_mut_ptr(),
+                buf.as_mut_ptr(),
                 SPI_CALIB_LEN,
             );
         }
+    }
 
-        // Skip if flash data is monotonous (implement spi_calibration_enable equivalent)
-        if !spi_calibration_enable(&check_buf) {
-            dbg!(self, "Flash data is monotonous, skip calibration");
-            self.apply_clock_settings(cs, max_freq);
-            return;
-        }
-
-        // Get golden checksum for reference
-        let gold_checksum = self.aspeed_spi_dma_checksum(0, 0);
-
+    fn run_timing_sweep(&mut self, cs: usize, gold_checksum: u32) -> bool {
         let hclk_masks = [7u32, 14, 6, 13];
+        let mut freq_to_use = self.spi_config.frequency;
+        let mut calib_res = [0u8; 6 * 17];
 
-        let mut freq_to_use = max_freq;
-
-        'outer: for (i, &mask) in hclk_masks.iter().enumerate() {
-            if freq_to_use < self.spi_data.hclk / (u32::try_from(i).unwrap() + 2) {
-                dbg!(
-                    self,
-                    "Skipping frequency {}",
-                    self.spi_data.hclk / (u32::try_from(i).unwrap() + 2)
-                );
+        for (i, &mask) in hclk_masks.iter().enumerate() {
+            let div = u32::try_from(i).unwrap() + 2;
+            if freq_to_use < self.spi_data.hclk / div {
                 continue;
             }
-            freq_to_use = self.spi_data.hclk / (u32::try_from(i).unwrap() + 2);
+
+            freq_to_use = self.spi_data.hclk / div;
 
             let checksum = self.aspeed_spi_dma_checksum(mask, 0);
             let pass = checksum == gold_checksum;
@@ -393,7 +390,6 @@ impl<'a> SpiController<'a> {
                 if pass { "PASS" } else { "FAIL" }
             );
 
-            // Clear calibration results buffer
             calib_res.fill(0);
 
             for hcycle in 0..=5 {
@@ -415,25 +411,33 @@ impl<'a> SpiController<'a> {
                 }
             }
 
-            let calib_point = get_mid_point_of_longest_one(&calib_res);
-            if calib_point < 0 {
-                dbg!(self, "Cannot get good calibration point.");
-                continue;
-            }
-            let hcycle: u32 = (calib_point / 17).try_into().unwrap();
-            let delay_ns: u32 = (calib_point % 17).try_into().unwrap();
+            if let Some((hcycle, delay_ns)) = self.pick_best_delay(&calib_res) {
+                dbg!(self, "Final hcycle: {}, delay_ns: {}", hcycle, delay_ns);
+                let final_delay = ((1 << 3) | hcycle | (delay_ns << 4)) << (i * 8);
+                self.regs.spi084().write(|w| unsafe { w.bits(final_delay) });
 
-            //log::debug!("Final hcycle: {}, delay_ns: {}", hcycle, delay_ns);
-            let final_delay = ((1 << 3) | hcycle | (delay_ns << 4)) << (i * 8);
-            self.regs.spi084().write(|w| unsafe { w.bits(final_delay) });
-            break 'outer;
+                self.apply_clock_settings(cs, freq_to_use);
+                return true;
+            } else {
+                dbg!(self, "Cannot get good calibration point.");
+            }
         }
 
-        // Apply clock division and set SPI clock frequency
-        self.apply_clock_settings(cs, freq_to_use);
+        false
     }
 
-    fn apply_clock_settings(&mut self, cs: usize, max_freq: u32) {
+    fn pick_best_delay(&self, calib_res: &[u8]) -> Option<(u32, u32)> {
+        let calib_point = get_mid_point_of_longest_one(calib_res);
+        if calib_point < 0 {
+            None
+        } else {
+            let hcycle: u32 = (calib_point / 17).try_into().unwrap();
+            let delay_ns: u32 = (calib_point % 17).try_into().unwrap();
+            Some((hcycle, delay_ns))
+        }
+    }
+
+   fn apply_clock_settings(&mut self, cs: usize, max_freq: u32) {
         let hclk_div = aspeed_get_spi_freq_div(self.spi_data.hclk, max_freq);
 
         let mut reg_val = cs_ctrlreg_r!(self, cs);
@@ -481,8 +485,8 @@ impl<'a> SpiController<'a> {
         let ctrl_val = SPI_DMA_ENABLE
             | SPI_DMA_CALC_CKSUM
             | SPI_DMA_CALIB_MODE
-            | (delay << 8)
-            | ((div & 0xf) << 16);
+            | ((delay & SPI_DMA_DELAY_MASK) << SPI_DMA_DELAY_SHIFT)
+            | ((div & SPI_DMA_CLK_FREQ_MASK) << SPI_DMA_CLK_FREQ_SHIFT);
 
         self.regs.spi080().write(|w| unsafe { w.bits(ctrl_val) });
         // Wait until DMA done

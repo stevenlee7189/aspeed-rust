@@ -79,6 +79,10 @@ const SPI_DMA_REQUEST: u32 = 1 << 31;
 const SPI_DMA_GRANT: u32 = 1 << 30;
 const SPI_DMA_CALIB_MODE: u32 = 1 << 3;
 const SPI_DMA_CALC_CKSUM: u32 = 1 << 2;
+const SPI_DMA_DELAY_SHIFT: u32 = 8;
+const SPI_DMA_DELAY_MASK: u32 = 0xff;
+const SPI_DMA_CLK_FREQ_SHIFT: u32 = 16;
+const SPI_DMA_CLK_FREQ_MASK: u32 = 0xf;
 
 const SPI_DMA_ENABLE: u32 = 1 << 0;
 const SPI_DMA_STATUS: u32 = 1 << 11;
