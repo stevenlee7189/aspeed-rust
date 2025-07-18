@@ -3,6 +3,7 @@
 #![no_std]
 #![no_main]
 
+use aspeed_ddk::gpio::{gpiol, GpioExt};
 use core::sync::atomic::AtomicBool;
 // use core::arch::asm;
 use aspeed_ddk::uart::{Config, UartController};
@@ -13,7 +14,9 @@ use ast1060_pac::{Wdt, Wdt1};
 use aspeed_ddk::ecdsa::AspeedEcdsa;
 use aspeed_ddk::hace_controller::HaceController;
 use aspeed_ddk::rsa::AspeedRsa;
+use aspeed_ddk::spi;
 use aspeed_ddk::syscon::{ClockId, ResetId, SysCon};
+use embedded_hal::digital::OutputPin;
 use fugit::MillisDurationU32 as MilliSeconds;
 
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
@@ -94,6 +97,26 @@ fn test_wdt(uart: &mut UartController<'_>) {
     }
 }
 
+fn test_gpio_flash_power(uart: &mut UartController<'_>) {
+    let mut delay = DummyDelay {};
+    if true {
+        /* Older demo board required this */
+        let peripherals = unsafe { Peripherals::steal() };
+        let gpio = peripherals.gpio;
+        let gpiol = gpiol::GPIOL::new(gpio).split();
+        uart.write_all(b"\r\n####### GPIO test #######\r\n")
+            .unwrap();
+
+        let mut pl2 = gpiol.pl2.into_push_pull_output();
+        pl2.set_high().unwrap();
+        uart.write_all(b"\r\nGPIOL2 set high\r\n").unwrap();
+        let mut pl3 = gpiol.pl3.into_push_pull_output();
+        pl3.set_high().unwrap();
+        uart.write_all(b"\r\nGPIOL3 set high\r\n").unwrap();
+        delay.delay_ns(1_000_000);
+    }
+}
+
 #[no_mangle]
 pub static HALT: AtomicBool = AtomicBool::new(true);
 
@@ -164,6 +187,14 @@ fn main() -> ! {
 
     test_wdt(&mut uart_controller);
 
+    let test_spicontroller = false;
+    if test_spicontroller {
+        spi::spitest::test_fmc(&mut uart_controller);
+        spi::spitest::test_spi(&mut uart_controller);
+
+        test_gpio_flash_power(&mut uart_controller);
+        spi::spitest::test_spi2(&mut uart_controller);
+    }
     // Initialize the peripherals here if needed
     loop {
         cortex_m::asm::wfi();
