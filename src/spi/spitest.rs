@@ -41,7 +41,9 @@ pub const SPIPF4_BASE: usize = 0x7e79_4000;
 
 pub const GPIO_BASE: usize = 0x7e78_0000;
 
-enum DeviceId {
+#[derive(Copy, Clone)]
+#[deny(dead_code)]
+pub enum DeviceId {
     FmcCs0Idx,
     FmcCs1Idx,
     Spi0Cs0Idx,
@@ -190,7 +192,8 @@ pub fn test_read_jedec<D: SpiNorDevice<Error = E>, E>(uart: &mut UartController<
     }
 }
 
-pub fn device_info(dev_idx: &DeviceId) -> (usize, usize, usize) {
+#[must_use]
+pub fn device_info(dev_idx: DeviceId) -> (usize, usize, usize) {
     match dev_idx {
         DeviceId::FmcCs0Idx => (FMC_CTRL_BASE, FMC_MMAP_BASE, FMC_CS0_CAPACITY),
         DeviceId::FmcCs1Idx => (
@@ -223,10 +226,9 @@ pub fn test_cs<D: SpiNorDevice<Error = E>, E>(
     let mut delay1 = DummyDelay {};
 
     let wbuf: &mut [u8] = unsafe { SPI_NC_BUFFER[WRITE_IDX].as_mut_slice(0, len) };
-    let devid = &dev_idx;
     let ptr_write: *mut u8 = wbuf.as_mut_ptr();
 
-    let (reg_base, mmap_addr, cs_capacity) = device_info(devid);
+    let (reg_base, mmap_addr, _cs_capacity) = device_info(dev_idx);
 
     if len > DMA_MIN_LENGTH {
         test_log!(uart, "################ DMA TEST starts. base: {:08x} addr: {:08x}, len: {:08x}######################", reg_base, addr, len);
@@ -242,10 +244,10 @@ pub fn test_cs<D: SpiNorDevice<Error = E>, E>(
         delay1.delay_ns(2_000_000);
 
         test_log!(uart, "##start page_programing");
-        for i in 0..len {
-            wbuf[i] = i as u8;
+        for (i, value) in wbuf.iter_mut().enumerate().take(len) {
+            *value = u8::try_from(i).unwrap();
         }
-        match devid {
+        match dev_idx {
             DeviceId::FmcCs0Idx | DeviceId::FmcCs1Idx => {
                 let _ = dev.nor_page_program(addr, wbuf);
             }
@@ -308,7 +310,7 @@ pub fn test_cs<D: SpiNorDevice<Error = E>, E>(
 
 pub fn test_fmc(uart: &mut UartController<'_>) {
     let fmc_spi = unsafe { &*ast1060_pac::Fmc::ptr() };
-    let base = fmc_spi as *const _ as usize;
+    let base = core::ptr::from_ref(fmc_spi) as usize;
     test_log!(uart, "fmc_spi Base address = 0x{:08X}", base);
 
     pinctrl::Pinctrl::apply_pinctrl_group(pinctrl::PINCTRL_FMC_QUAD);
@@ -386,12 +388,13 @@ pub fn test_fmc(uart: &mut UartController<'_>) {
     test_log!(uart, "################# FMC test done ! ###############");
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn test_spi(uart: &mut UartController<'_>) {
     let spi0 = unsafe { &*ast1060_pac::Spi::ptr() };
-    let base = spi0 as *const _ as usize;
+    let base = core::ptr::from_ref(spi0) as usize;
     test_log!(uart, "spi0 Base address = 0x{:08X}", base);
     let current_cs = 0;
-    let test_blockDev = true;
+    let test_block_dev = true;
 
     test_log!(uart, "SPI Test Starts...");
 
@@ -441,7 +444,17 @@ pub fn test_spi(uart: &mut UartController<'_>) {
     let _ = flash_device.nor_read_init(&nor_read_data);
     let _ = flash_device.nor_write_init(&nor_write_data);
 
-    if !test_blockDev {
+    if test_block_dev {
+        match flash_device.nor_read_jedec_id() {
+            Ok(id) => match NorFlashBlockDevice::from_jedec_id(flash_device, id) {
+                Ok(mut blockdev) => test_block_device::<_>(&mut blockdev),
+                Err(_e) => test_log!(uart, "start block device using jedec id failed"),
+            },
+            _ => {
+                test_log!(uart, "Error:: Failed to read JEDEC ID");
+            }
+        }
+    } else {
         test_read_jedec(uart, &mut flash_device);
         test_cs(
             uart,
@@ -516,16 +529,6 @@ pub fn test_spi(uart: &mut UartController<'_>) {
             true,
         );
         //  test_cs(uart, &mut flash_device, DeviceId::Spi0Cs0Idx,0x300, TEST_DATA_SIZE, true);
-    } else {
-        match flash_device.nor_read_jedec_id() {
-            Ok(id) => match NorFlashBlockDevice::from_jedec_id(flash_device, id) {
-                Ok(mut blockdev) => test_block_device::<_>(&mut blockdev),
-                Err(e) => test_log!(uart, "start block device using jedec id failed"),
-            },
-            _ => {
-                test_log!(uart, "Error:: Failed to read JEDEC ID");
-            }
-        }
     }
     test_log!(uart, "################# SPI 1 TEST done ! ###############");
 }
@@ -576,9 +579,10 @@ pub fn test_block_device<T: SpiNorDevice>(blockdev: &mut NorFlashBlockDevice<T>)
 
     let mut delay = DummyDelay {};
     test_log!(uartc, "########## start erase ");
-    blockdev.erase(range);
-    for i in 0..testsize {
-        wbuf[i] = (i as u8) % 255;
+    let _ = blockdev.erase(range);
+
+    for (i, value) in wbuf.iter_mut().take(testsize).enumerate() {
+        *value = u8::try_from(i % 255).unwrap();
     }
     delay.delay_ns(2_000_000);
     test_log!(
@@ -611,12 +615,13 @@ pub fn test_block_device<T: SpiNorDevice>(blockdev: &mut NorFlashBlockDevice<T>)
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn test_spi2(uart: &mut UartController<'_>) {
     let spi1 = unsafe { &*ast1060_pac::Spi1::ptr() };
     let current_cs = 0;
     let read_id = true;
 
-    let base = spi1 as *const _ as usize;
+    let base = core::ptr::from_ref(spi1) as usize;
     test_log!(uart, "SPI1 Base address = 0x{:08X}", base);
 
     let spi_data = SpiData {
@@ -637,8 +642,8 @@ pub fn test_spi2(uart: &mut UartController<'_>) {
     test_log!(uart, "SPI1 set pinctrl");
     test_log!(uart, " SCU:: 0x{:08x}", SCU_BASE);
 
-    let _peripherals = unsafe { Peripherals::steal() };
-    let spi_uart = _peripherals.uart;
+    let peripherals = unsafe { Peripherals::steal() };
+    let spi_uart = peripherals.uart;
     let mut delay = DummyDelay {};
 
     let mut uart_controller = UartController::new(spi_uart, &mut delay);
@@ -762,23 +767,23 @@ pub fn start_spim0() -> SpiMonitor<Spipf> {
 
     let read_blocked_regions = [RegionInfo {
         /*pfm*/
-        start: 0x04000000,
-        length: 0x00020000,
+        start: 0x0400_0000,
+        length: 0x0002_0000,
     }];
 
     let write_blocked_regions = [RegionInfo {
-        start: 0x00000000,
-        length: 0x08000000,
+        start: 0x0000_0000,
+        length: 0x0800_0000,
     }];
     let mut spi_monitor0 = SpiMonitor::<Spipf>::new(
         true,
         SpimExtMuxSel::SpimExtMuxSel1,
         &allow_cmds,
-        allow_cmds.len() as u8,
+        u8::try_from(allow_cmds.len()).unwrap(),
         &read_blocked_regions,
-        read_blocked_regions.len() as u8,
+        u8::try_from(read_blocked_regions.len()).unwrap(),
         &write_blocked_regions,
-        write_blocked_regions.len() as u8,
+        u8::try_from(write_blocked_regions.len()).unwrap(),
     );
     spi_monitor0.spim_sw_rst();
     spi_monitor0.aspeed_spi_monitor_init();
@@ -788,6 +793,8 @@ pub fn start_spim0() -> SpiMonitor<Spipf> {
     spi_monitor0
     // print spim pointer value
 }
+
+#[must_use]
 pub fn start_spim1() -> SpiMonitor<Spipf1> {
     let allow_cmds: [u8; 27] = [
         0x03, 0x13, 0x0b, 0x0c, 0x6b, 0x6c, 0x01, 0x05, 0x35, 0x06, 0x04, 0x20, 0x21, 0x9f, 0x5a,
@@ -795,25 +802,27 @@ pub fn start_spim1() -> SpiMonitor<Spipf1> {
     ];
 
     let write_blocked_regions = [RegionInfo {
-        start: 0x00000000,
-        length: 0x08000000,
+        start: 0x0000_0000,
+        length: 0x0800_0000,
     }];
     let mut spi_monitor1 = SpiMonitor::<Spipf1>::new(
         true,
         SpimExtMuxSel::SpimExtMuxSel1,
         &allow_cmds,
-        allow_cmds.len() as u8,
+        u8::try_from(allow_cmds.len()).unwrap(),
         &[],
         0,
         &write_blocked_regions,
-        write_blocked_regions.len() as u8,
+        u8::try_from(write_blocked_regions.len()).unwrap(),
     );
     spi_monitor1.spim_sw_rst();
     spi_monitor1.aspeed_spi_monitor_init();
-    spi_monitor1
     //spi_monitor1.spim_ext_mux_config(SpimExtMuxSel::SpimExtMuxSel0);
+
+    spi_monitor1
 }
 
+#[must_use]
 pub fn start_spim2() -> SpiMonitor<Spipf2> {
     let allow_cmds: [u8; 27] = [
         0x03, 0x13, 0x0b, 0x0c, 0x6b, 0x6c, 0x01, 0x05, 0x35, 0x06, 0x04, 0x20, 0x21, 0x9f, 0x5a,
@@ -821,25 +830,27 @@ pub fn start_spim2() -> SpiMonitor<Spipf2> {
     ];
 
     let write_blocked_regions = [RegionInfo {
-        start: 0x00000000,
-        length: 0x08000000,
+        start: 0x0000_0000,
+        length: 0x0800_0000,
     }];
     let mut spi_monitor2 = SpiMonitor::<Spipf2>::new(
         true,
         SpimExtMuxSel::SpimExtMuxSel1,
         &allow_cmds,
-        allow_cmds.len() as u8,
+        u8::try_from(allow_cmds.len()).unwrap(),
         &[],
         0,
         &write_blocked_regions,
-        write_blocked_regions.len() as u8,
+        u8::try_from(write_blocked_regions.len()).unwrap(),
     );
     spi_monitor2.spim_sw_rst();
     spi_monitor2.aspeed_spi_monitor_init();
-    spi_monitor2
     //spi_monitor2.spim_ext_mux_config(SpimExtMuxSel::SpimExtMuxSel0);
+
+    spi_monitor2
 }
 
+#[must_use]
 pub fn start_spim3() -> SpiMonitor<Spipf3> {
     let allow_cmds: [u8; 27] = [
         0x03, 0x13, 0x0b, 0x0c, 0x6b, 0x6c, 0x01, 0x05, 0x35, 0x06, 0x04, 0x20, 0x21, 0x9f, 0x5a,
@@ -877,15 +888,15 @@ pub fn start_spim3() -> SpiMonitor<Spipf3> {
         true,
         SpimExtMuxSel::SpimExtMuxSel1,
         &allow_cmds,
-        allow_cmds.len() as u8,
+        u8::try_from(allow_cmds.len()).unwrap(),
         &read_blocked_regions,
-        read_blocked_regions.len() as u8,
+        u8::try_from(read_blocked_regions.len()).unwrap(),
         &write_blocked_regions,
-        write_blocked_regions.len() as u8,
+        u8::try_from(write_blocked_regions.len()).unwrap(),
     );
     spi_monitor3.spim_sw_rst();
     spi_monitor3.aspeed_spi_monitor_init();
-    spi_monitor3
-
     //spi_monitor3.spim_ext_mux_config(SpimExtMuxSel::SpimExtMuxSel0);
+
+    spi_monitor3
 }

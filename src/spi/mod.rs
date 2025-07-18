@@ -66,7 +66,6 @@ const SPI_CTRL_FREQ_MASK: u32 = 0x0F00_0F00;
 const SPI_CTRL_CEX_SPI_CMD_SHIFT: u32 = 16;
 const SPI_CTRL_CEX_SPI_CMD_MASK: u32 = 0xff;
 const SPI_CTRL_CEX_DUMMY_SHIFT: u32 = 6;
-const SPI_CTRL_CEX_DUMMY_MASK: u32 = 0x3;
 const SPI_CTRL_CEX_4BYTE_MODE_SET: u32 = 0x11; // bit0: 4byte mode, bit4: 4byte mode cmd
 
 const SPI_DMA_DELAY_SHIFT: u32 = 8;

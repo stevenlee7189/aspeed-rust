@@ -162,38 +162,38 @@ fn main() -> ! {
 
     writeln!(uart_controller, "\r\nHello, world!!\r\n").unwrap();
 
-    let test_spicontroller = true;
+    let delay = DummyDelay;
+    let mut syscon = SysCon::new(delay.clone(), scu);
+
+    // Enable HACE (Hash and Crypto Engine)
+    let _ = syscon.enable_clock(ClockId::ClkYCLK as u8);
+    let reset_id = ResetId::RstHACE;
+    let _ = syscon.reset_deassert(&reset_id);
+
+    let mut hace_controller = HaceController::new(&hace);
+
+    run_hash_tests(&mut uart_controller, &mut hace_controller);
+
+    run_hmac_tests(&mut uart_controller, &mut hace_controller);
+
+    // Enable RSA and ECC
+    let _ = syscon.enable_clock(ClockId::ClkRSACLK as u8);
+
+    let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
+    run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
+
+    let mut rsa = AspeedRsa::new(&secure, delay);
+    run_rsa_tests(&mut uart_controller, &mut rsa);
+
+    test_wdt(&mut uart_controller);
+
+    let test_spicontroller = false;
     if test_spicontroller {
         spi::spitest::test_fmc(&mut uart_controller);
         spi::spitest::test_spi(&mut uart_controller);
 
         test_gpio_flash_power(&mut uart_controller);
         spi::spitest::test_spi2(&mut uart_controller);
-    } else {
-        let delay = DummyDelay;
-        let mut syscon = SysCon::new(delay.clone(), scu);
-
-        // Enable HACE (Hash and Crypto Engine)
-        let _ = syscon.enable_clock(ClockId::ClkYCLK as u8);
-        let reset_id = ResetId::RstHACE;
-        let _ = syscon.reset_deassert(&reset_id);
-
-        let mut hace_controller = HaceController::new(&hace);
-
-        run_hash_tests(&mut uart_controller, &mut hace_controller);
-
-        run_hmac_tests(&mut uart_controller, &mut hace_controller);
-
-        // Enable RSA and ECC
-        let _ = syscon.enable_clock(ClockId::ClkRSACLK as u8);
-
-        let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
-        run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
-
-        let mut rsa = AspeedRsa::new(&secure, delay);
-        run_rsa_tests(&mut uart_controller, &mut rsa);
-        
-        test_wdt(&mut uart_controller);
     }
     // Initialize the peripherals here if needed
     loop {
