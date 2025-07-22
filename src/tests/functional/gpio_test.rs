@@ -66,6 +66,8 @@ pub fn test_gpio_flash_power(uart: &mut UartController<'_>) {
         uart.write_all(b"\r\n####### GPIO flash power #######\r\n")
             .unwrap();
 
+        pinctrl::Pinctrl::apply_pinctrl_group(pinctrl::PINCTRL_GPIOL2);
+        pinctrl::Pinctrl::apply_pinctrl_group(pinctrl::PINCTRL_GPIOL3);
         let mut pl2 = gpiol.pl2.into_push_pull_output();
         pl2.set_high().unwrap();
         uart.write_all(b"\r\nGPIOL2 set high\r\n").unwrap();
@@ -84,6 +86,7 @@ pub fn test_gpio_bmc_reset(uart: &mut UartController<'_>) {
         uart.write_all(b"\r\n####### GPIO BMC SRST #######\r\n")
             .unwrap();
 
+        pinctrl::Pinctrl::apply_pinctrl_group(pinctrl::PINCTRL_GPIOM5);
         let mut pm5 = gpiom.pm5.into_push_pull_output();
         pm5.set_low().unwrap();
         if pm5.is_set_low().unwrap() {
