@@ -55,8 +55,8 @@ pub fn test_gpioa(uart: &mut UartController<'_>) {
             .unwrap();
     }
 }
-#[allow(dead_code)]
-fn test_gpio_flash_power(uart: &mut UartController<'_>) {
+
+pub fn test_gpio_flash_power(uart: &mut UartController<'_>) {
     let mut delay = DummyDelay {};
     if true {
         /* Older demo board required this */
@@ -76,7 +76,7 @@ fn test_gpio_flash_power(uart: &mut UartController<'_>) {
     }
 }
 #[allow(dead_code)]
-fn test_gpio_bmc_reset(uart: &mut UartController<'_>) {
+pub fn test_gpio_bmc_reset(uart: &mut UartController<'_>) {
     {
         let peripherals = unsafe { Peripherals::steal() };
         let gpio = peripherals.gpio;
