@@ -424,6 +424,39 @@ paste! {
     gen_pin_pairs!(SCU694, 0x694, 30);
     gen_pin_pairs!(SCU694, 0x694, 31);
 
+    gen_pin_pairs!(SCU698, 0x698, 0);
+    gen_pin_pairs!(SCU698, 0x698, 1);
+    gen_pin_pairs!(SCU698, 0x698, 2);
+    gen_pin_pairs!(SCU698, 0x698, 3);
+    gen_pin_pairs!(SCU698, 0x698, 4);
+    gen_pin_pairs!(SCU698, 0x698, 5);
+    gen_pin_pairs!(SCU698, 0x698, 6);
+    gen_pin_pairs!(SCU698, 0x698, 7);
+    gen_pin_pairs!(SCU698, 0x698, 8);
+    gen_pin_pairs!(SCU698, 0x698, 9);
+    gen_pin_pairs!(SCU698, 0x698, 10);
+    gen_pin_pairs!(SCU698, 0x698, 11);
+    gen_pin_pairs!(SCU698, 0x698, 12);
+    gen_pin_pairs!(SCU698, 0x698, 13);
+    gen_pin_pairs!(SCU698, 0x698, 14);
+    gen_pin_pairs!(SCU698, 0x698, 15);
+    gen_pin_pairs!(SCU698, 0x698, 16);
+    gen_pin_pairs!(SCU698, 0x698, 17);
+    gen_pin_pairs!(SCU698, 0x698, 18);
+    gen_pin_pairs!(SCU698, 0x698, 19);
+    gen_pin_pairs!(SCU698, 0x698, 20);
+    gen_pin_pairs!(SCU698, 0x698, 21);
+    gen_pin_pairs!(SCU698, 0x698, 22);
+    gen_pin_pairs!(SCU698, 0x698, 23);
+    gen_pin_pairs!(SCU698, 0x698, 24);
+    gen_pin_pairs!(SCU698, 0x698, 25);
+    gen_pin_pairs!(SCU698, 0x698, 26);
+    gen_pin_pairs!(SCU698, 0x698, 27);
+    gen_pin_pairs!(SCU698, 0x698, 28);
+    gen_pin_pairs!(SCU698, 0x698, 29);
+    gen_pin_pairs!(SCU698, 0x698, 30);
+    gen_pin_pairs!(SCU698, 0x698, 31);
+
     gen_pin_pairs!(SCU69C, 0x69C, 0);
     gen_pin_pairs!(SCU69C, 0x69C, 1);
     gen_pin_pairs!(SCU69C, 0x69C, 2);
@@ -1693,75 +1726,75 @@ paste! {
     pub const PINCTRL_I2C13: &[PinctrlPin] =
         &[PIN_SCU4B8_22, PIN_SCU4B8_23, CLR_PIN_SCU418_22, CLR_PIN_SCU418_23];
 
-    pub const PINCTRL_GPIOA0: &[PinctrlPin] = &[PIN_SCU410_0];
-    pub const PINCTRL_GPIOA1: &[PinctrlPin] = &[PIN_SCU410_1];
-    pub const PINCTRL_GPIOA2: &[PinctrlPin] = &[PIN_SCU410_2];
-    pub const PINCTRL_GPIOA3: &[PinctrlPin] = &[PIN_SCU410_3];
-    pub const PINCTRL_GPIOA4: &[PinctrlPin] = &[PIN_SCU410_4];
-    pub const PINCTRL_GPIOA5: &[PinctrlPin] = &[PIN_SCU410_5];
-    pub const PINCTRL_GPIOA6: &[PinctrlPin] = &[PIN_SCU410_6];
-    pub const PINCTRL_GPIOA7: &[PinctrlPin] = &[PIN_SCU410_7];
+    pub const PINCTRL_GPIOA0: &[PinctrlPin] = &[CLR_PIN_SCU410_0, CLR_PIN_SCU4B0_0, CLR_PIN_SCU690_0];
+    pub const PINCTRL_GPIOA1: &[PinctrlPin] = &[CLR_PIN_SCU410_1, CLR_PIN_SCU4B0_1, CLR_PIN_SCU690_1];
+    pub const PINCTRL_GPIOA2: &[PinctrlPin] = &[CLR_PIN_SCU410_2, CLR_PIN_SCU4B0_2, CLR_PIN_SCU690_2];
+    pub const PINCTRL_GPIOA3: &[PinctrlPin] = &[CLR_PIN_SCU410_3, CLR_PIN_SCU4B0_3, CLR_PIN_SCU690_3];
+    pub const PINCTRL_GPIOA4: &[PinctrlPin] = &[CLR_PIN_SCU410_4, CLR_PIN_SCU4B0_4, CLR_PIN_SCU690_4];
+    pub const PINCTRL_GPIOA5: &[PinctrlPin] = &[CLR_PIN_SCU410_5, CLR_PIN_SCU4B0_5, CLR_PIN_SCU690_5];
+    pub const PINCTRL_GPIOA6: &[PinctrlPin] = &[CLR_PIN_SCU410_6, CLR_PIN_SCU4B0_6, CLR_PIN_SCU690_6];
+    pub const PINCTRL_GPIOA7: &[PinctrlPin] = &[CLR_PIN_SCU410_7, CLR_PIN_SCU4B0_7, CLR_PIN_SCU690_7];
 
-    pub const PINCTRL_GPIOB0: &[PinctrlPin] = &[PIN_SCU410_8];
-    pub const PINCTRL_GPIOB1: &[PinctrlPin] = &[PIN_SCU410_9];
-    pub const PINCTRL_GPIOB2: &[PinctrlPin] = &[PIN_SCU410_10];
-    pub const PINCTRL_GPIOB3: &[PinctrlPin] = &[PIN_SCU410_11];
-    pub const PINCTRL_GPIOB4: &[PinctrlPin] = &[PIN_SCU410_12];
-    pub const PINCTRL_GPIOB5: &[PinctrlPin] = &[PIN_SCU410_13];
-    pub const PINCTRL_GPIOB6: &[PinctrlPin] = &[PIN_SCU410_14];
-    pub const PINCTRL_GPIOB7: &[PinctrlPin] = &[PIN_SCU410_15];
+    pub const PINCTRL_GPIOB0: &[PinctrlPin] = &[CLR_PIN_SCU410_8, CLR_PIN_SCU4B0_8, CLR_PIN_SCU690_8];
+    pub const PINCTRL_GPIOB1: &[PinctrlPin] = &[CLR_PIN_SCU410_9, CLR_PIN_SCU4B0_9, CLR_PIN_SCU690_9];
+    pub const PINCTRL_GPIOB2: &[PinctrlPin] = &[CLR_PIN_SCU410_10, CLR_PIN_SCU4B0_10, CLR_PIN_SCU690_10];
+    pub const PINCTRL_GPIOB3: &[PinctrlPin] = &[CLR_PIN_SCU410_11, CLR_PIN_SCU4B0_11, CLR_PIN_SCU690_11];
+    pub const PINCTRL_GPIOB4: &[PinctrlPin] = &[CLR_PIN_SCU410_12, CLR_PIN_SCU4B0_12, CLR_PIN_SCU690_12];
+    pub const PINCTRL_GPIOB5: &[PinctrlPin] = &[CLR_PIN_SCU410_13, CLR_PIN_SCU4B0_13, CLR_PIN_SCU690_13];
+    pub const PINCTRL_GPIOB6: &[PinctrlPin] = &[CLR_PIN_SCU410_14, CLR_PIN_SCU4B0_14, CLR_PIN_SCU690_14];
+    pub const PINCTRL_GPIOB7: &[PinctrlPin] = &[CLR_PIN_SCU410_15, CLR_PIN_SCU4B0_15, CLR_PIN_SCU690_15];
 
-    pub const PINCTRL_GPIOC0: &[PinctrlPin] = &[PIN_SCU410_16];
-    pub const PINCTRL_GPIOC1: &[PinctrlPin] = &[PIN_SCU410_17];
-    pub const PINCTRL_GPIOC2: &[PinctrlPin] = &[PIN_SCU410_18];
-    pub const PINCTRL_GPIOC3: &[PinctrlPin] = &[PIN_SCU410_19];
-    pub const PINCTRL_GPIOC4: &[PinctrlPin] = &[PIN_SCU410_20];
-    pub const PINCTRL_GPIOC5: &[PinctrlPin] = &[PIN_SCU410_21];
-    pub const PINCTRL_GPIOC6: &[PinctrlPin] = &[PIN_SCU410_22];
-    pub const PINCTRL_GPIOC7: &[PinctrlPin] = &[PIN_SCU410_23];
+    pub const PINCTRL_GPIOC0: &[PinctrlPin] = &[CLR_PIN_SCU410_16, CLR_PIN_SCU4B0_16, CLR_PIN_SCU690_16];
+    pub const PINCTRL_GPIOC1: &[PinctrlPin] = &[CLR_PIN_SCU410_17, CLR_PIN_SCU4B0_17, CLR_PIN_SCU690_17];
+    pub const PINCTRL_GPIOC2: &[PinctrlPin] = &[CLR_PIN_SCU410_18, CLR_PIN_SCU4B0_18, CLR_PIN_SCU690_18];
+    pub const PINCTRL_GPIOC3: &[PinctrlPin] = &[CLR_PIN_SCU410_19, CLR_PIN_SCU4B0_19, CLR_PIN_SCU690_19];
+    pub const PINCTRL_GPIOC4: &[PinctrlPin] = &[CLR_PIN_SCU410_20, CLR_PIN_SCU4B0_20, CLR_PIN_SCU690_20];
+    pub const PINCTRL_GPIOC5: &[PinctrlPin] = &[CLR_PIN_SCU410_21, CLR_PIN_SCU4B0_21, CLR_PIN_SCU690_21];
+    pub const PINCTRL_GPIOC6: &[PinctrlPin] = &[CLR_PIN_SCU410_22, CLR_PIN_SCU4B0_22, CLR_PIN_SCU690_22];
+    pub const PINCTRL_GPIOC7: &[PinctrlPin] = &[CLR_PIN_SCU410_23, CLR_PIN_SCU4B0_23, CLR_PIN_SCU690_23];
 
-    pub const PINCTRL_GPIOD0: &[PinctrlPin] = &[PIN_SCU410_24];
-    pub const PINCTRL_GPIOD1: &[PinctrlPin] = &[PIN_SCU410_25];
-    pub const PINCTRL_GPIOD2: &[PinctrlPin] = &[PIN_SCU410_26];
-    pub const PINCTRL_GPIOD3: &[PinctrlPin] = &[PIN_SCU410_27];
-    pub const PINCTRL_GPIOD4: &[PinctrlPin] = &[PIN_SCU410_28];
-    pub const PINCTRL_GPIOD5: &[PinctrlPin] = &[PIN_SCU410_29];
-    pub const PINCTRL_GPIOD6: &[PinctrlPin] = &[PIN_SCU410_30];
-    pub const PINCTRL_GPIOD7: &[PinctrlPin] = &[PIN_SCU410_31];
+    pub const PINCTRL_GPIOD0: &[PinctrlPin] = &[CLR_PIN_SCU410_24, CLR_PIN_SCU4B0_24, CLR_PIN_SCU690_24];
+    pub const PINCTRL_GPIOD1: &[PinctrlPin] = &[CLR_PIN_SCU410_25, CLR_PIN_SCU4B0_25, CLR_PIN_SCU690_25];
+    pub const PINCTRL_GPIOD2: &[PinctrlPin] = &[CLR_PIN_SCU410_26, CLR_PIN_SCU4B0_26, CLR_PIN_SCU690_26];
+    pub const PINCTRL_GPIOD3: &[PinctrlPin] = &[CLR_PIN_SCU410_27, CLR_PIN_SCU4B0_27, CLR_PIN_SCU690_27];
+    pub const PINCTRL_GPIOD4: &[PinctrlPin] = &[CLR_PIN_SCU410_28, CLR_PIN_SCU4B0_28, CLR_PIN_SCU690_28];
+    pub const PINCTRL_GPIOD5: &[PinctrlPin] = &[CLR_PIN_SCU410_29, CLR_PIN_SCU4B0_29, CLR_PIN_SCU690_29];
+    pub const PINCTRL_GPIOD6: &[PinctrlPin] = &[CLR_PIN_SCU410_30, CLR_PIN_SCU4B0_30, CLR_PIN_SCU690_30];
+    pub const PINCTRL_GPIOD7: &[PinctrlPin] = &[CLR_PIN_SCU410_31, CLR_PIN_SCU4B0_31, CLR_PIN_SCU690_31];
 
-    pub const PINCTRL_GPIOE0: &[PinctrlPin] = &[PIN_SCU414_0];
-    pub const PINCTRL_GPIOE1: &[PinctrlPin] = &[PIN_SCU414_1];
-    pub const PINCTRL_GPIOE2: &[PinctrlPin] = &[PIN_SCU414_2];
-    pub const PINCTRL_GPIOE3: &[PinctrlPin] = &[PIN_SCU414_3];
-    pub const PINCTRL_GPIOE4: &[PinctrlPin] = &[PIN_SCU414_4];
-    pub const PINCTRL_GPIOE5: &[PinctrlPin] = &[PIN_SCU414_5];
-    pub const PINCTRL_GPIOE6: &[PinctrlPin] = &[PIN_SCU414_6];
-    pub const PINCTRL_GPIOE7: &[PinctrlPin] = &[PIN_SCU414_7];
+    pub const PINCTRL_GPIOE0: &[PinctrlPin] = &[CLR_PIN_SCU414_0, CLR_PIN_SCU4B4_0, CLR_PIN_SCU694_0];
+    pub const PINCTRL_GPIOE1: &[PinctrlPin] = &[CLR_PIN_SCU414_1, CLR_PIN_SCU4B4_1, CLR_PIN_SCU694_1];
+    pub const PINCTRL_GPIOE2: &[PinctrlPin] = &[CLR_PIN_SCU414_2, CLR_PIN_SCU4B4_2, CLR_PIN_SCU694_2];
+    pub const PINCTRL_GPIOE3: &[PinctrlPin] = &[CLR_PIN_SCU414_3, CLR_PIN_SCU4B4_3, CLR_PIN_SCU694_3];
+    pub const PINCTRL_GPIOE4: &[PinctrlPin] = &[CLR_PIN_SCU414_4, CLR_PIN_SCU4B4_4, CLR_PIN_SCU694_4];
+    pub const PINCTRL_GPIOE5: &[PinctrlPin] = &[CLR_PIN_SCU414_5, CLR_PIN_SCU4B4_5, CLR_PIN_SCU694_5];
+    pub const PINCTRL_GPIOE6: &[PinctrlPin] = &[CLR_PIN_SCU414_6, CLR_PIN_SCU4B4_6, CLR_PIN_SCU694_6];
+    pub const PINCTRL_GPIOE7: &[PinctrlPin] = &[CLR_PIN_SCU414_7, CLR_PIN_SCU4B4_7, CLR_PIN_SCU694_7];
 
-    pub const PINCTRL_GPIOF0: &[PinctrlPin] = &[PIN_SCU414_8];
-    pub const PINCTRL_GPIOF1: &[PinctrlPin] = &[PIN_SCU414_9];
-    pub const PINCTRL_GPIOF2: &[PinctrlPin] = &[PIN_SCU414_10];
-    pub const PINCTRL_GPIOF3: &[PinctrlPin] = &[PIN_SCU414_11];
-    pub const PINCTRL_GPIOF4: &[PinctrlPin] = &[PIN_SCU414_12];
-    pub const PINCTRL_GPIOF5: &[PinctrlPin] = &[PIN_SCU414_13];
-    pub const PINCTRL_GPIOF6: &[PinctrlPin] = &[PIN_SCU414_14];
-    pub const PINCTRL_GPIOF7: &[PinctrlPin] = &[PIN_SCU414_15];
+    pub const PINCTRL_GPIOF0: &[PinctrlPin] = &[CLR_PIN_SCU414_8, CLR_PIN_SCU4B4_8, CLR_PIN_SCU694_8];
+    pub const PINCTRL_GPIOF1: &[PinctrlPin] = &[CLR_PIN_SCU414_9, CLR_PIN_SCU4B4_9, CLR_PIN_SCU694_9];
+    pub const PINCTRL_GPIOF2: &[PinctrlPin] = &[CLR_PIN_SCU414_10, CLR_PIN_SCU4B4_10, CLR_PIN_SCU694_10];
+    pub const PINCTRL_GPIOF3: &[PinctrlPin] = &[CLR_PIN_SCU414_11, CLR_PIN_SCU4B4_11, CLR_PIN_SCU694_11];
+    pub const PINCTRL_GPIOF4: &[PinctrlPin] = &[CLR_PIN_SCU414_12, CLR_PIN_SCU4B4_12, CLR_PIN_SCU694_12];
+    pub const PINCTRL_GPIOF5: &[PinctrlPin] = &[CLR_PIN_SCU414_13, CLR_PIN_SCU4B4_13, CLR_PIN_SCU694_13];
+    pub const PINCTRL_GPIOF6: &[PinctrlPin] = &[CLR_PIN_SCU414_14, CLR_PIN_SCU4B4_14, CLR_PIN_SCU694_14];
+    pub const PINCTRL_GPIOF7: &[PinctrlPin] = &[CLR_PIN_SCU414_15, CLR_PIN_SCU4B4_15, CLR_PIN_SCU694_15];
 
-    pub const PINCTRL_GPIOG0: &[PinctrlPin] = &[PIN_SCU414_16];
-    pub const PINCTRL_GPIOG1: &[PinctrlPin] = &[PIN_SCU414_17];
-    pub const PINCTRL_GPIOG2: &[PinctrlPin] = &[PIN_SCU414_18];
-    pub const PINCTRL_GPIOG3: &[PinctrlPin] = &[PIN_SCU414_19];
-    pub const PINCTRL_GPIOG4: &[PinctrlPin] = &[PIN_SCU414_20];
-    pub const PINCTRL_GPIOG5: &[PinctrlPin] = &[PIN_SCU414_21];
-    pub const PINCTRL_GPIOG6: &[PinctrlPin] = &[PIN_SCU414_22];
-    pub const PINCTRL_GPIOG7: &[PinctrlPin] = &[PIN_SCU414_23];
+    pub const PINCTRL_GPIOG0: &[PinctrlPin] = &[CLR_PIN_SCU414_16, CLR_PIN_SCU4B4_16, CLR_PIN_SCU694_16];
+    pub const PINCTRL_GPIOG1: &[PinctrlPin] = &[CLR_PIN_SCU414_17, CLR_PIN_SCU4B4_17, CLR_PIN_SCU694_17];
+    pub const PINCTRL_GPIOG2: &[PinctrlPin] = &[CLR_PIN_SCU414_18, CLR_PIN_SCU4B4_18, CLR_PIN_SCU694_18];
+    pub const PINCTRL_GPIOG3: &[PinctrlPin] = &[CLR_PIN_SCU414_19, CLR_PIN_SCU4B4_19, CLR_PIN_SCU694_19];
+    pub const PINCTRL_GPIOG4: &[PinctrlPin] = &[CLR_PIN_SCU414_20, CLR_PIN_SCU4B4_20, CLR_PIN_SCU694_20];
+    pub const PINCTRL_GPIOG5: &[PinctrlPin] = &[CLR_PIN_SCU414_21, CLR_PIN_SCU4B4_21, CLR_PIN_SCU694_21];
+    pub const PINCTRL_GPIOG6: &[PinctrlPin] = &[CLR_PIN_SCU414_22, CLR_PIN_SCU4B4_22, CLR_PIN_SCU694_22];
+    pub const PINCTRL_GPIOG7: &[PinctrlPin] = &[CLR_PIN_SCU414_23, CLR_PIN_SCU4B4_23, CLR_PIN_SCU694_23];
 
-    pub const PINCTRL_GPIOH0: &[PinctrlPin] = &[PIN_SCU414_24];
-    pub const PINCTRL_GPIOH1: &[PinctrlPin] = &[PIN_SCU414_25];
-    pub const PINCTRL_GPIOH2: &[PinctrlPin] = &[PIN_SCU414_26];
-    pub const PINCTRL_GPIOH3: &[PinctrlPin] = &[PIN_SCU414_27];
-    pub const PINCTRL_GPIOH4: &[PinctrlPin] = &[CLR_PIN_SCU414_28, CLR_PIN_SCU694_28];
-    pub const PINCTRL_GPIOH5: &[PinctrlPin] = &[CLR_PIN_SCU414_29, CLR_PIN_SCU694_29];
+    pub const PINCTRL_GPIOH0: &[PinctrlPin] = &[CLR_PIN_SCU414_24, CLR_PIN_SCU4B4_24, CLR_PIN_SCU694_24];
+    pub const PINCTRL_GPIOH1: &[PinctrlPin] = &[CLR_PIN_SCU414_25, CLR_PIN_SCU4B4_25, CLR_PIN_SCU694_25];
+    pub const PINCTRL_GPIOH2: &[PinctrlPin] = &[CLR_PIN_SCU414_26, CLR_PIN_SCU4B4_26, CLR_PIN_SCU694_26];
+    pub const PINCTRL_GPIOH3: &[PinctrlPin] = &[CLR_PIN_SCU414_27, CLR_PIN_SCU4B4_27, CLR_PIN_SCU694_27];
+    pub const PINCTRL_GPIOH4: &[PinctrlPin] = &[CLR_PIN_SCU414_28, CLR_PIN_SCU4B4_28, CLR_PIN_SCU694_28];
+    pub const PINCTRL_GPIOH5: &[PinctrlPin] = &[CLR_PIN_SCU414_29, CLR_PIN_SCU4B4_29, CLR_PIN_SCU694_29];
     pub const PINCTRL_GPIOH6: &[PinctrlPin] = &[CLR_PIN_SCU414_30];
     pub const PINCTRL_GPIOH7: &[PinctrlPin] = &[CLR_PIN_SCU414_31];
 
@@ -1792,37 +1825,48 @@ paste! {
     pub const PINCTRL_GPIOK6: &[PinctrlPin] = &[CLR_PIN_SCU418_22, CLR_PIN_SCU4B8_22];
     pub const PINCTRL_GPIOK7: &[PinctrlPin] = &[CLR_PIN_SCU418_23, CLR_PIN_SCU4B8_23];
 
-    pub const PINCTRL_GPIOL4: &[PinctrlPin] = &[PIN_SCU418_28];
-    pub const PINCTRL_GPIOL5: &[PinctrlPin] = &[PIN_SCU418_29];
-    pub const PINCTRL_GPIOL6: &[PinctrlPin] = &[PIN_SCU418_30];
-    pub const PINCTRL_GPIOL7: &[PinctrlPin] = &[PIN_SCU418_31];
+    pub const PINCTRL_GPIOL0: &[PinctrlPin] = &[CLR_PIN_SCU418_24];
+    pub const PINCTRL_GPIOL1: &[PinctrlPin] = &[CLR_PIN_SCU418_25];
+    pub const PINCTRL_GPIOL2: &[PinctrlPin] = &[CLR_PIN_SCU418_26];
+    pub const PINCTRL_GPIOL3: &[PinctrlPin] = &[CLR_PIN_SCU418_27];
+    pub const PINCTRL_GPIOL4: &[PinctrlPin] = &[CLR_PIN_SCU418_28, CLR_PIN_SCU4B8_28, CLR_PIN_SCU698_28];
+    pub const PINCTRL_GPIOL5: &[PinctrlPin] = &[CLR_PIN_SCU418_29, CLR_PIN_SCU4B8_29, CLR_PIN_SCU698_29];
+    pub const PINCTRL_GPIOL6: &[PinctrlPin] = &[CLR_PIN_SCU418_30, CLR_PIN_SCU4B8_30, CLR_PIN_SCU698_30];
+    pub const PINCTRL_GPIOL7: &[PinctrlPin] = &[CLR_PIN_SCU418_31, CLR_PIN_SCU4B8_31, CLR_PIN_SCU698_31];
+
+    pub const PINCTRL_GPIOM0: &[PinctrlPin] = &[CLR_PIN_SCU41C_0];
+    pub const PINCTRL_GPIOM1: &[PinctrlPin] = &[CLR_PIN_SCU41C_1];
+    pub const PINCTRL_GPIOM2: &[PinctrlPin] = &[CLR_PIN_SCU41C_2];
+    pub const PINCTRL_GPIOM3: &[PinctrlPin] = &[CLR_PIN_SCU41C_3];
+    pub const PINCTRL_GPIOM4: &[PinctrlPin] = &[CLR_PIN_SCU41C_4];
+    pub const PINCTRL_GPIOM5: &[PinctrlPin] = &[CLR_PIN_SCU41C_5];
 
     pub const PINCTRL_GPION0: &[PinctrlPin] = &[CLR_PIN_SCU41C_8];
-    pub const PINCTRL_GPION1: &[PinctrlPin] = &[CLR_PIN_SCU41C_9, CLR_PIN_SCU69C_9];
+    pub const PINCTRL_GPION1: &[PinctrlPin] = &[CLR_PIN_SCU41C_9, CLR_PIN_SCU4BC_9, CLR_PIN_SCU69C_9];
     pub const PINCTRL_GPION2: &[PinctrlPin] = &[CLR_PIN_SCU41C_10];
-    pub const PINCTRL_GPION3: &[PinctrlPin] = &[CLR_PIN_SCU41C_11, CLR_PIN_SCU69C_9];
-    pub const PINCTRL_GPION4: &[PinctrlPin] = &[PIN_SCU41C_12];
-    pub const PINCTRL_GPION5: &[PinctrlPin] = &[PIN_SCU41C_13];
-    pub const PINCTRL_GPION6: &[PinctrlPin] = &[PIN_SCU41C_14];
-    pub const PINCTRL_GPION7: &[PinctrlPin] = &[PIN_SCU41C_15];
+    pub const PINCTRL_GPION3: &[PinctrlPin] = &[CLR_PIN_SCU41C_11, CLR_PIN_SCU4BC_11, CLR_PIN_SCU69C_11];
+    pub const PINCTRL_GPION4: &[PinctrlPin] = &[CLR_PIN_SCU41C_12, CLR_PIN_SCU4BC_12];
+    pub const PINCTRL_GPION5: &[PinctrlPin] = &[CLR_PIN_SCU41C_13, CLR_PIN_SCU4BC_13];
+    pub const PINCTRL_GPION6: &[PinctrlPin] = &[CLR_PIN_SCU41C_14, CLR_PIN_SCU4BC_14];
+    pub const PINCTRL_GPION7: &[PinctrlPin] = &[CLR_PIN_SCU41C_15, CLR_PIN_SCU4BC_15];
 
-    pub const PINCTRL_GPIOO0: &[PinctrlPin] = &[PIN_SCU41C_16];
-    pub const PINCTRL_GPIOO1: &[PinctrlPin] = &[PIN_SCU41C_17];
-    pub const PINCTRL_GPIOO2: &[PinctrlPin] = &[PIN_SCU41C_18];
-    pub const PINCTRL_GPIOO3: &[PinctrlPin] = &[PIN_SCU41C_19];
-    pub const PINCTRL_GPIOO4: &[PinctrlPin] = &[PIN_SCU41C_20];
-    pub const PINCTRL_GPIOO5: &[PinctrlPin] = &[PIN_SCU41C_21];
-    pub const PINCTRL_GPIOO6: &[PinctrlPin] = &[PIN_SCU41C_22];
-    pub const PINCTRL_GPIOO7: &[PinctrlPin] = &[PIN_SCU41C_23];
+    pub const PINCTRL_GPIOO0: &[PinctrlPin] = &[CLR_PIN_SCU41C_16, CLR_PIN_SCU4BC_16];
+    pub const PINCTRL_GPIOO1: &[PinctrlPin] = &[CLR_PIN_SCU41C_17, CLR_PIN_SCU4BC_17];
+    pub const PINCTRL_GPIOO2: &[PinctrlPin] = &[CLR_PIN_SCU41C_18, CLR_PIN_SCU4BC_18];
+    pub const PINCTRL_GPIOO3: &[PinctrlPin] = &[CLR_PIN_SCU41C_19, CLR_PIN_SCU4BC_19];
+    pub const PINCTRL_GPIOO4: &[PinctrlPin] = &[CLR_PIN_SCU41C_20, CLR_PIN_SCU4BC_20, CLR_PIN_SCU69C_20];
+    pub const PINCTRL_GPIOO5: &[PinctrlPin] = &[CLR_PIN_SCU41C_21, CLR_PIN_SCU4BC_21, CLR_PIN_SCU69C_21];
+    pub const PINCTRL_GPIOO6: &[PinctrlPin] = &[CLR_PIN_SCU41C_22, CLR_PIN_SCU4BC_22, CLR_PIN_SCU69C_22];
+    pub const PINCTRL_GPIOO7: &[PinctrlPin] = &[CLR_PIN_SCU41C_23, CLR_PIN_SCU4BC_23, CLR_PIN_SCU69C_23];
 
-    pub const PINCTRL_GPIOP0: &[PinctrlPin] = &[PIN_SCU41C_24];
+    pub const PINCTRL_GPIOP0: &[PinctrlPin] = &[CLR_PIN_SCU41C_24, CLR_PIN_SCU4BC_24, CLR_PIN_SCU69C_24];
     pub const PINCTRL_GPIOP1: &[PinctrlPin] = &[CLR_PIN_SCU41C_25, CLR_PIN_SCU4BC_25];
     pub const PINCTRL_GPIOP2: &[PinctrlPin] = &[CLR_PIN_SCU41C_26, CLR_PIN_SCU4BC_26];
     pub const PINCTRL_GPIOP3: &[PinctrlPin] = &[CLR_PIN_SCU41C_27, CLR_PIN_SCU4BC_27];
     pub const PINCTRL_GPIOP4: &[PinctrlPin] = &[CLR_PIN_SCU41C_28, CLR_PIN_SCU4BC_28];
     pub const PINCTRL_GPIOP5: &[PinctrlPin] = &[CLR_PIN_SCU41C_29, CLR_PIN_SCU4BC_29];
-    pub const PINCTRL_GPIOP6: &[PinctrlPin] = &[CLR_PIN_SCU41C_30, CLR_PIN_SCU69C_30];
-    pub const PINCTRL_GPIOP7: &[PinctrlPin] = &[CLR_PIN_SCU41C_31, CLR_PIN_SCU69C_31];
+    pub const PINCTRL_GPIOP6: &[PinctrlPin] = &[CLR_PIN_SCU41C_30, CLR_PIN_SCU4BC_30, CLR_PIN_SCU69C_30];
+    pub const PINCTRL_GPIOP7: &[PinctrlPin] = &[CLR_PIN_SCU41C_31, CLR_PIN_SCU4BC_31, CLR_PIN_SCU69C_31];
 
     pub const PINCTRL_GPIOQ0: &[PinctrlPin] = &[CLR_PIN_SCU430_0, CLR_PIN_SCU6B0_0];
     pub const PINCTRL_GPIOQ1: &[PinctrlPin] = &[CLR_PIN_SCU430_1, CLR_PIN_SCU6B0_1];
@@ -1836,14 +1880,23 @@ paste! {
     pub const PINCTRL_GPIOS2: &[PinctrlPin] = &[CLR_PIN_SCU430_17];
     pub const PINCTRL_GPIOS3: &[PinctrlPin] = &[CLR_PIN_SCU430_18];
 
-    pub const PINCTRL_GPIOU0: &[PinctrlPin] = &[CLR_PIN_SCU434_0];
-    pub const PINCTRL_GPIOU1: &[PinctrlPin] = &[CLR_PIN_SCU434_1];
-    pub const PINCTRL_GPIOU2: &[PinctrlPin] = &[CLR_PIN_SCU434_2];
-    pub const PINCTRL_GPIOU3: &[PinctrlPin] = &[CLR_PIN_SCU434_3];
-    pub const PINCTRL_GPIOU4: &[PinctrlPin] = &[CLR_PIN_SCU434_4];
-    pub const PINCTRL_GPIOU5: &[PinctrlPin] = &[CLR_PIN_SCU434_5];
-    pub const PINCTRL_GPIOU6: &[PinctrlPin] = &[CLR_PIN_SCU434_6];
-    pub const PINCTRL_GPIOU7: &[PinctrlPin] = &[CLR_PIN_SCU434_7];
+    pub const PINCTRL_GPIOT0: &[PinctrlPin] = &[PIN_SCU430_24];
+    pub const PINCTRL_GPIOT1: &[PinctrlPin] = &[PIN_SCU430_25];
+    pub const PINCTRL_GPIOT2: &[PinctrlPin] = &[PIN_SCU430_26];
+    pub const PINCTRL_GPIOT3: &[PinctrlPin] = &[PIN_SCU430_27];
+    pub const PINCTRL_GPIOT4: &[PinctrlPin] = &[PIN_SCU430_28];
+    pub const PINCTRL_GPIOT5: &[PinctrlPin] = &[PIN_SCU430_29];
+    pub const PINCTRL_GPIOT6: &[PinctrlPin] = &[PIN_SCU430_30];
+    pub const PINCTRL_GPIOT7: &[PinctrlPin] = &[PIN_SCU430_31];
+
+    pub const PINCTRL_GPIOU0: &[PinctrlPin] = &[PIN_SCU434_0];
+    pub const PINCTRL_GPIOU1: &[PinctrlPin] = &[PIN_SCU434_1];
+    pub const PINCTRL_GPIOU2: &[PinctrlPin] = &[PIN_SCU434_2];
+    pub const PINCTRL_GPIOU3: &[PinctrlPin] = &[PIN_SCU434_3];
+    pub const PINCTRL_GPIOU4: &[PinctrlPin] = &[PIN_SCU434_4];
+    pub const PINCTRL_GPIOU5: &[PinctrlPin] = &[PIN_SCU434_5];
+    pub const PINCTRL_GPIOU6: &[PinctrlPin] = &[PIN_SCU434_6];
+    pub const PINCTRL_GPIOU7: &[PinctrlPin] = &[PIN_SCU434_7];
 }
 
 #[macro_export]
@@ -1877,6 +1930,7 @@ impl Pinctrl {
                 0x4bc => modify_reg!(scu.scu4bc(), pin.bit, pin.clear),
                 0x690 => modify_reg!(scu.scu690(), pin.bit, pin.clear),
                 0x694 => modify_reg!(scu.scu694(), pin.bit, pin.clear),
+                0x698 => modify_reg!(scu.scu698(), pin.bit, pin.clear),
                 0x69c => modify_reg!(scu.scu69c(), pin.bit, pin.clear),
                 0x6b0 => modify_reg!(scu.scu6b0(), pin.bit, pin.clear),
                 _ => {}
