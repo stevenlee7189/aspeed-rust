@@ -1399,11 +1399,14 @@ impl<'a, I2C: Instance, I2CT: I2CTarget, L: Logger> Ast1060I2c<'a, I2C, I2CT, L>
                 I2cXferMode::DmaMode => {
                     let slave_rx_len = self.i2c.i2cs4c().read().dmarx_actual_len_byte().bits();
                     i2c_debug!(self.logger, "dma write_received: len={:#x}", slave_rx_len);
-                    let slice = self.sdma_buf.as_slice(0, slave_rx_len as usize);
-                    if let Some(target) = self.i2c_data.slave_target.as_mut() {
-                        target.on_write(slice).unwrap();
+                    //target expects one byte each time
+                    for i in 0..slave_rx_len {
+                        let slice = self.sdma_buf.as_slice(i as usize, i as usize + 1);
+                        if let Some(target) = self.i2c_data.slave_target.as_mut() {
+                            target.on_write(slice).unwrap();
+                        }
+                        i2c_debug!(self.logger, "write_received: data={:?}", slice);
                     }
-                    i2c_debug!(self.logger, "write_received: data={:?}", slice);
                 }
                 I2cXferMode::BuffMode => {
                     let slave_rx_len = u16::from(
@@ -1414,16 +1417,19 @@ impl<'a, I2C: Instance, I2CT: I2CTarget, L: Logger> Ast1060I2c<'a, I2C, I2CT, L>
                             .bits(),
                     );
                     i2c_debug!(self.logger, "buff write_received: len={:#x}", slave_rx_len);
-                    if let Some(target) = self.i2c_data.slave_target.as_mut() {
-                        target
-                            .on_write(&self.i2c_data.msg.buf[..(slave_rx_len as usize)])
-                            .unwrap();
+                    //target expects one byte each time
+                    for i in 0..slave_rx_len {
+                        if let Some(target) = self.i2c_data.slave_target.as_mut() {
+                            target
+                                .on_write(&self.i2c_data.msg.buf[(i as usize)..(i as usize + 1)])
+                                .unwrap();
+                        }
+                        i2c_debug!(
+                            self.logger,
+                            "write_received data={:?}",
+                            &self.i2c_data.msg.buf[(i as usize)..(i as usize + 1)]
+                        );
                     }
-                    i2c_debug!(
-                        self.logger,
-                        "write_received data={:?}",
-                        &self.i2c_data.msg.buf[0..(slave_rx_len as usize)]
-                    );
                 }
                 I2cXferMode::ByteMode => {}
             }
