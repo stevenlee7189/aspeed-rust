@@ -7,3 +7,5 @@ pub mod hmac_test;
 pub mod i2c_test;
 pub mod rsa_test;
 pub mod rsa_test_vec;
+#[cfg(feature = "i2c_target")]
+pub mod swmbx_test;
