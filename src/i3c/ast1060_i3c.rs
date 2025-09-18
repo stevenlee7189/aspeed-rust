@@ -3,7 +3,9 @@
 use crate::common::{DummyDelay, Logger};
 use core::marker::PhantomData;
 use core::fmt::Write;
+use core::sync::atomic::{AtomicPtr, Ordering};
 use embedded_hal::delay::DelayNs;
+use heapless::Vec;
 // use cortex_m::peripheral::NVIC;
 // use embedded_hal::delay::DelayNs;
 
@@ -41,7 +43,144 @@ pub const I3CG_REG1_SDA_IN_SW_MODE_EN:  u32 = 1 << 29;
 pub const CM_TFR_STS_MASTER_HALT: u8 = 0xf;
 pub const CM_TFR_STS_TARGET_HALT: u8 = 0x6;
 
-pub const RESET_CTRL_ALL: u32 = 0x0000_003f;
+pub const COMMAND_QUEUE_PORT: u32 = 0x0c;
+
+// --- single-bit flags ---
+pub const COMMAND_PORT_PEC:           u32 = bit(31);
+pub const COMMAND_PORT_TOC:           u32 = bit(30);
+pub const COMMAND_PORT_READ_TRANSFER: u32 = bit(28);
+pub const COMMAND_PORT_SDAP:          u32 = bit(27);
+pub const COMMAND_PORT_ROC:           u32 = bit(26);
+pub const COMMAND_PORT_DBP:           u32 = bit(25);
+pub const COMMAND_PORT_CP:            u32 = bit(15);
+
+// --- field masks ---
+pub const COMMAND_PORT_SPEED:     u32 = bits(23, 21);
+pub const COMMAND_PORT_DEV_INDEX: u32 = bits(20, 16);
+pub const COMMAND_PORT_CMD:       u32 = bits(14, 7);
+pub const COMMAND_PORT_TID:       u32 = bits(6, 3);
+pub const COMMAND_PORT_ATTR:      u32 = bits(2, 0);
+pub const COMMAND_ATTR_XFER_CMD:        u32 = 0;
+pub const COMMAND_ATTR_XFER_ARG:        u32 = 1;
+pub const COMMAND_ATTR_SHORT_ARG:       u32 = 2;
+pub const COMMAND_ATTR_ADDR_ASSGN_CMD:  u32 = 3;
+pub const COMMAND_ATTR_SLAVE_DATA_CMD:  u32 = 0;
+
+pub const I3C_CCC_ENTDAA:u32 = 0x7;
+
+#[repr(u32)]
+pub enum SpeedI3c {
+    Sdr0   = 0x0,
+    Sdr1   = 0x1,
+    Sdr2   = 0x2,
+    Sdr3   = 0x3,
+    Sdr4   = 0x4,
+    HdrTs  = 0x5,
+    HdrDdr = 0x6,
+    I2cFmAsI3c = 0x7, // SPEED_I3C_I2C_FM
+}
+
+#[repr(u32)]
+pub enum SpeedI2c {
+    Fm  = 0x0,
+    Fmp = 0x1,
+}
+
+#[repr(u32)]
+pub enum Tid {
+    TargetIbi       = 0x1,
+    TargetRdData    = 0x2,
+    TargetMasterWr  = 0x8,
+    TargetMasterDef = 0xF,
+}
+
+pub enum I3cError {
+    NoSpace,     // -ENOSPC
+}
+pub type I3cResult<T> = core::result::Result<T, I3cError>;
+
+pub const COMMAND_PORT_DEV_COUNT: u32 = bits(25, 21);
+
+pub const RESET_CTRL_IBI_QUEUE: u32   = bit(5);
+pub const RESET_CTRL_RX_FIFO: u32     = bit(4);
+pub const RESET_CTRL_TX_FIFO: u32     = bit(3);
+pub const RESET_CTRL_RESP_QUEUE: u32  = bit(2);
+pub const RESET_CTRL_CMD_QUEUE: u32   = bit(1);
+pub const RESET_CTRL_SOFT: u32        = bit(0);
+
+pub const RESET_CTRL_ALL: u32 =
+    RESET_CTRL_IBI_QUEUE
+    | RESET_CTRL_RX_FIFO
+    | RESET_CTRL_TX_FIFO
+    | RESET_CTRL_RESP_QUEUE
+    | RESET_CTRL_CMD_QUEUE
+    | RESET_CTRL_SOFT;
+
+pub const RESET_CTRL_QUEUES: u32 =
+    RESET_CTRL_IBI_QUEUE
+    | RESET_CTRL_RX_FIFO
+    | RESET_CTRL_TX_FIFO
+    | RESET_CTRL_RESP_QUEUE
+    | RESET_CTRL_CMD_QUEUE;
+
+pub const RESET_CTRL_XFER_QUEUES: u32 =
+    RESET_CTRL_RX_FIFO
+    | RESET_CTRL_TX_FIFO
+    | RESET_CTRL_RESP_QUEUE
+    | RESET_CTRL_CMD_QUEUE;
+
+const fn genmask(msb: u32, lsb: u32) -> u32 {
+    let width = msb - lsb + 1;
+    if width >= 32 {
+        u32::MAX
+    } else {
+        ((1u32 << width) - 1) << lsb
+    }
+}
+
+#[inline(always)]
+const fn field_get(val: u32, mask: u32, shift: u32) -> u32 {
+    (val & mask) >> shift
+}
+
+pub const fn bit(n: u32) -> u32 { 1 << n }
+pub const fn bits(h: u32, l: u32) -> u32 { ((1u32 << (h - l + 1)) - 1) << l }
+pub const fn field_prep(mask: u32, val: u32) -> u32 {
+    (val << mask.trailing_zeros()) & mask
+}
+fn find_lsb_pos(x: u32) -> Option<u32> {
+    if x == 0 { None } else { Some(x.trailing_zeros() as u32) }
+}
+
+
+// ---- registers / fields ----
+pub const RESPONSE_QUEUE_PORT: u32 = 0x10;
+pub const RESPONSE_PORT_ERR_STATUS_SHIFT: u32 = 28;
+pub const RESPONSE_PORT_ERR_STATUS_MASK:  u32 = genmask(31, 28);
+pub const RESPONSE_PORT_TID_SHIFT: u32 = 24;
+pub const RESPONSE_PORT_TID_MASK:  u32 = genmask(27, 24);
+pub const RESPONSE_PORT_DATA_LEN_SHIFT: u32 = 0;
+pub const RESPONSE_PORT_DATA_LEN_MASK:  u32 = genmask(15, 0);
+
+pub const INTR_STATUS:     u32 = 0x3c;
+pub const INTR_STATUS_EN:  u32 = 0x40;
+pub const INTR_SIGNAL_EN:  u32 = 0x44;
+pub const INTR_FORCE:      u32 = 0x48;
+
+// Interrupt status bits
+pub const INTR_BUSOWNER_UPDATE_STAT: u32 = bit(13);
+pub const INTR_IBI_UPDATED_STAT:     u32 = bit(12);
+pub const INTR_READ_REQ_RECV_STAT:   u32 = bit(11);
+pub const INTR_DEFSLV_STAT:          u32 = bit(10);
+pub const INTR_TRANSFER_ERR_STAT:    u32 = bit(9);
+pub const INTR_DYN_ADDR_ASSGN_STAT:  u32 = bit(8);
+pub const INTR_CCC_UPDATED_STAT:     u32 = bit(6);
+pub const INTR_TRANSFER_ABORT_STAT:  u32 = bit(5);
+pub const INTR_RESP_READY_STAT:      u32 = bit(4);
+pub const INTR_CMD_QUEUE_READY_STAT: u32 = bit(3);
+pub const INTR_IBI_THLD_STAT:        u32 = bit(2);
+pub const INTR_RX_THLD_STAT:         u32 = bit(1);
+pub const INTR_TX_THLD_STAT:         u32 = bit(0);
 
 pub enum I3cStatus {
     Ok,
@@ -54,21 +193,24 @@ pub enum I3cStatus {
 pub struct I3cCmd<'a> {
     pub cmd_lo: u32,
     pub cmd_hi: u32,
-    /// Write payload (ignored for reads)
-    pub tx: &'a [u8],
-    /// Read buffer (ignored for writes)
-    pub rx: &'a mut [u8],
-    /// Driver can set per-cmd status after execution
-    pub status: I3cStatus,
+    pub tx: Option<&'a [u8]>,
+    pub rx: Option<&'a mut [u8]>,
+    pub tx_len: u32,
+    pub rx_len: u32,
+    pub ret: i32,
 }
 
 pub struct I3cXfer<'a> {
     pub cmds: &'a mut [I3cCmd<'a>],
-    pub status: I3cStatus,
+    pub ret: i32,
 }
 impl<'a> I3cXfer<'a> {
     pub fn new(cmds: &'a mut [I3cCmd<'a>]) -> Self {
-        Self { cmds, status: I3cStatus::Pending }
+        Self { cmds, ret: 0 }
+    }
+
+    pub fn ncmds(&self) -> usize {
+        self.cmds.len()
     }
 }
 
@@ -79,14 +221,57 @@ pub struct I3cPriv {
     pub ibi_enable: bool,
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct I3cDesc {
+    pub pid: u64,
+    pub static_addr: u8,
+    pub init_dyn_addr: u8,
+    pub dynamic_addr: u8,
+    pub bcr: u8,
+    pub dcr: u8,
+    pub maxrd: u8,
+    pub maxwr: u8,
+    pub max_read_turnaround: u32,
+    pub mrl: u16,
+    pub mwl: u16,
+    pub max_ibi: u8,
+    pub i3c_priv_idx: Option<u8>,
+}
+
+pub struct I3cDevAttachedList<const I3C_MAX: usize> {
+    pub i3c_devices: Vec<I3cDesc, I3C_MAX>,
+}
+
+impl<const I3C_MAX: usize>
+    I3cDevAttachedList<I3C_MAX>
+{
+    pub const fn new() -> Self {
+        Self {
+            i3c_devices: Vec::new(),
+        }
+    }
+
+    #[inline]
+    pub fn find_i3c_by_dyn(&self, addr: u8) -> Option<&I3cDesc> {
+        self.i3c_devices.iter().find(|d| d.dynamic_addr == addr)
+    }
+
+    #[inline]
+    pub fn find_i3c_by_dyn_mut(&mut self, addr: u8) -> Option<&mut I3cDesc> {
+        self.i3c_devices.iter_mut().find(|d| d.dynamic_addr == addr)
+    }
+}
+
 pub struct I3cConfig {
     // Optional: your own “common” higher-level state
     pub common: CommonState,
 
     pub target_config: Option<&'static mut I3cTargetConfig>,
+    pub devs: I3cDevAttachedList<8>,
 
     // Concurrency
-    pub curr_xfer: Option<&'static mut I3cXfer<'static>>,
+    // pub curr_xfer: Option<&'static mut I3cXfer<'static>>,
+    pub curr_xfer: AtomicPtr<()>,
 
     // Timing/phy params (ns)
     pub core_period: u32,
@@ -111,6 +296,29 @@ pub struct I3cConfig {
 
     // Target-mode data
     pub sir_allowed_by_sw: bool,
+}
+
+#[derive(Debug)]
+pub struct CccTargetPayload<'a> {
+    /// Target 7‑bit dynamic address (left‑aligned; driver decides if LSB is R/W).
+    pub addr: u8,
+    /// `false` = write, `true` = read.
+    pub rnw: bool,
+    /// Data buffer for write (source) or read (destination).
+    pub data: &'a mut [u8],
+    /// Actual bytes transferred (driver fills on return).
+    pub num_xfer: usize,
+}
+
+
+/// One CCC transaction description.
+#[derive(Debug)]
+pub struct CccPayload<'a, 'b> {
+    pub id: u8,
+    /// Optional CCC data immediately following the CCC byte.
+    pub ccc_data: Option<&'a mut [u8]>,
+    /// Optional list of direct‑CCC target payloads.
+    pub targets: Option<&'b mut [CccTargetPayload<'a>]>,
 }
 
 #[derive(Default)]
@@ -159,6 +367,31 @@ pub trait HardwareInterface {
     fn enter_halt(&mut self, by_sw: bool, config: &mut I3cConfig);
     fn reset_ctrl(&mut self, reset: u32);
     fn wr_tx_fifo(&mut self, bytes: &[u8]);
+    fn rd_fifo<F>(&mut self, read_word: F, out: &mut [u8])
+    where
+        F: FnMut() -> u32;
+    fn drain_fifo<F>(&mut self, read_word: F, len: usize)
+    where
+        F: FnMut() -> u32;
+    fn rd_rx_fifo(&mut self, out: &mut [u8]);
+    fn rd_ibi_fifo(&mut self, out: &mut [u8]);
+    fn ibi_enable(&mut self, config: &mut I3cConfig);
+    fn start_xfer(&mut self, config: &mut I3cConfig, xfer: &mut I3cXfer);
+    fn end_xfer(&mut self, config: &mut I3cConfig);
+    fn get_addr_pos(&mut self, config: &I3cConfig, addr: u8) -> Option<u8>;
+    fn i3c_device_find(&mut self, config: &I3cConfig, pid: u64);
+    fn detach_i3c_dev(&mut self, config: &mut I3cConfig, pos: u8);
+    fn attach_i3c_device(&mut self, config: &mut I3cConfig, target: &mut I3cDesc, addr: u8) -> I3cResult<()>;
+    fn do_ccc(&mut self, config: &mut I3cConfig, cmd: u8, arg: u8) -> i32;
+    fn do_entdaa(&mut self, config: &mut I3cConfig, index: u32) -> i32;
+    fn bytes_to_pid(bytes: &[u8]) -> u64;
+    fn handle_unsolicited(&mut self, config: &mut I3cConfig);
+    fn do_daa(&mut self, config: &mut I3cConfig) -> i32;
+    fn priv_xfer(&mut self, config: &mut I3cConfig, xfer: &mut I3cXfer) -> i32;
+    fn target_tx_write(&mut self, buf: &[u8]);
+    fn handle_ibi_sir(&mut self, config: &mut I3cConfig);
+    fn handle_ibis(&mut self, config: &mut I3cConfig);
+    fn i3c_aspeed_isr(&mut self, config: &mut I3cConfig);
 }
 
 pub trait Instance {
@@ -216,7 +449,8 @@ impl I3cConfig {
         Self {
             common: CommonState::default(),
             target_config: None,
-            curr_xfer: None,
+            devs: I3cDevAttachedList::new(),
+            curr_xfer: AtomicPtr::new(core::ptr::null_mut()),
             core_period: 0,
             i2c_scl_hz: 0,
             i3c_scl_hz: 0,
@@ -464,10 +698,10 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         };
         config.need_da = 0;
 
-        self.i3c.i3cd280().write(|w| {
-            w.sirreject().set_bit()
-                .mrreject().set_bit()
-        });
+        // self.i3c.i3cd280().write(|w| {
+        //     w.sirreject().set_bit()
+        //         .mrreject().set_bit()
+        // });
 
         // Init DAT
         for i in 0..config.maxdevs {
@@ -862,5 +1096,340 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             let word = u32::from_le_bytes(tmp);
             self.i3c.i3cd014().write(|w| unsafe { w.tx_data_port().bits(word) });
         }
+    }
+
+    fn rd_fifo<F>(&mut self, mut read_word: F, out: &mut [u8])
+    where
+        F: FnMut() -> u32,
+    {
+        let mut chunks = out.chunks_exact_mut(4);
+        for chunk in &mut chunks {
+            let val = read_word();
+            chunk.copy_from_slice(&val.to_le_bytes());
+        }
+
+        let rem = chunks.into_remainder();
+        if !rem.is_empty() {
+            let val = read_word();
+            let bytes = val.to_le_bytes();
+            rem.copy_from_slice(&bytes[..rem.len()]);
+        }
+    }
+
+    fn rd_rx_fifo(&mut self, out: &mut [u8]) {
+        self. rd_fifo(|| self.i3c.i3cd014().read().rx_data_port().bits(), out);
+    }
+
+    fn rd_ibi_fifo(&mut self, out: &mut [u8]) {
+        self.rd_fifo(|| self.i3c.i3cd018().read().bits(), out);
+    }
+
+    fn ibi_enable(&mut self, _config: &mut I3cConfig) {
+        // todo
+    }
+
+    fn start_xfer(&mut self, config: &mut I3cConfig, xfer: &mut I3cXfer) {
+
+        let p: *mut () = core::ptr::from_mut(xfer).cast::<()>();
+        config.curr_xfer.store(p, Ordering::Release);
+        for cmd in xfer.cmds.iter() {
+            if let Some(tx) = cmd.tx {
+                let take = tx.len().min(cmd.tx_len as usize);
+                if take > 0 {
+                    self.wr_tx_fifo(&tx[..take]);
+                }
+            }
+        }
+        self.i3c.i3cd01c().modify(|_, w| unsafe {
+            w.response_buffer_threshold_value().bits(xfer.ncmds() as u8 - 1)
+        });
+
+        for cmd in xfer.cmds.iter() {
+            self.i3c.i3cd00c().write(|w| unsafe {
+                w.bits(cmd.cmd_hi)
+            });
+            self.i3c.i3cd00c().write(|w| unsafe {
+                w.bits(cmd.cmd_lo)
+            });
+        }
+    }
+
+    fn end_xfer(&mut self, config: &mut I3cConfig) {
+        let p = config.curr_xfer.swap(core::ptr::null_mut(), Ordering::AcqRel);
+        if p.is_null() {
+            return;
+        }
+        let xfer: &mut I3cXfer = unsafe { &mut *(p.cast::<I3cXfer>()) };
+
+        let nresp = self.i3c.i3cd04c().read().respbufblr().bits() as usize;
+
+        for _ in 0..nresp {
+            let resp = self.i3c.i3cd010().read().bits();
+
+            let tid    = field_get(resp, RESPONSE_PORT_TID_MASK,        RESPONSE_PORT_TID_SHIFT)   as usize;
+            let rx_len = field_get(resp, RESPONSE_PORT_DATA_LEN_MASK,   RESPONSE_PORT_DATA_LEN_SHIFT) as usize;
+            let err    = field_get(resp, RESPONSE_PORT_ERR_STATUS_MASK, RESPONSE_PORT_ERR_STATUS_SHIFT) as i32;
+
+            let cmd = &mut xfer.cmds[tid];
+            cmd.rx_len = rx_len as u32;
+            cmd.ret    = err;
+
+            if rx_len > 0 && err == 0 {
+                if let Some(rx_buf) = cmd.rx.as_deref_mut() {
+                    self.rd_rx_fifo(&mut rx_buf[..rx_len]);
+                }
+            }
+        }
+        let mut ret = 0;
+        for i in 0..(nresp as usize) {
+            let r = xfer.cmds[i].ret;
+            if r != 0 {
+                ret = r;
+            }
+        }
+
+        if ret != 0 {
+            self.enter_halt(false, config);
+            self.reset_ctrl(RESET_CTRL_QUEUES);
+            self.exit_halt(config);
+        }
+
+        xfer.ret = ret;
+    }
+
+    fn get_addr_pos(&mut self, config: &I3cConfig, addr: u8) -> Option<u8> {
+        config
+            .addrs
+            .iter()
+            .take(config.maxdevs as usize)
+            .position(|&a| a == addr)
+            .map(|i| i as u8)
+    }
+
+    fn i3c_device_find(&mut self, _config: &I3cConfig, _pid: u64) {
+        // todo
+    }
+
+    fn detach_i3c_dev(&mut self, config: &mut I3cConfig, pos: u8) {
+
+        config.free_pos |= 1u32 << pos;
+        config.addrs[pos as usize] = 0;
+
+        match pos {
+            0 => { self.i3c.i3cd280().write(|w| w.sirreject().set_bit().mrreject().set_bit()); }
+            1 => { self.i3c.i3cd284().write(|w| w.sirreject().set_bit().mrreject().set_bit()); }
+            2 => { self.i3c.i3cd288().write(|w| w.sirreject().set_bit().mrreject().set_bit()); }
+            3 => { self.i3c.i3cd28c().write(|w| w.sirreject().set_bit().mrreject().set_bit()); }
+            4 => { self.i3c.i3cd290().write(|w| w.sirreject().set_bit().mrreject().set_bit()); }
+            5 => { self.i3c.i3cd294().write(|w| w.sirreject().set_bit().mrreject().set_bit()); }
+            6 => { self.i3c.i3cd298().write(|w| w.sirreject().set_bit().mrreject().set_bit()); }
+            7 => { self.i3c.i3cd29c().write(|w| w.sirreject().set_bit().mrreject().set_bit()); }
+            _ => {},
+        }
+    }
+
+    fn attach_i3c_device(&mut self, config: &mut I3cConfig, target: &mut I3cDesc, addr: u8) -> I3cResult<()> {
+
+            let pos: u32 = match find_lsb_pos(config.free_pos) {
+        Some(p) if p < u32::from(config.maxdevs) => p,
+        _ => return Err(I3cError::NoSpace),
+    };
+    let pos_usize = pos as usize;
+
+        // Mark position as used and remember address
+        config.free_pos &= !bit(pos);
+        config.addrs[pos_usize] = addr;
+
+        // Bind controller private
+        config.privs[pos_usize].pos  = pos as u8;
+        config.privs[pos_usize].addr = addr;
+        target.i3c_priv_idx = Some(pos as u8);
+
+        // Program DAT entry:
+        // Byte address with parity (bit7 = even parity of 7-bit addr)
+        let mut da_with_parity = addr;
+        if Self::even_parity(addr) { da_with_parity |= 1 << 7; }
+
+        match pos {
+            0 => { self.i3c.i3cd280().write(|w| unsafe { w.sirreject().set_bit().mrreject().set_bit().devdynamicaddr().bits(da_with_parity)}); }
+            1 => { self.i3c.i3cd284().write(|w| unsafe { w.sirreject().set_bit().mrreject().set_bit().devdynamicaddr().bits(da_with_parity)}); }
+            2 => { self.i3c.i3cd288().write(|w| unsafe { w.sirreject().set_bit().mrreject().set_bit().devdynamicaddr().bits(da_with_parity)}); }
+            3 => { self.i3c.i3cd28c().write(|w| unsafe { w.sirreject().set_bit().mrreject().set_bit().devdynamicaddr().bits(da_with_parity)}); }
+            4 => { self.i3c.i3cd290().write(|w| unsafe { w.sirreject().set_bit().mrreject().set_bit().devdynamicaddr().bits(da_with_parity)}); }
+            5 => { self.i3c.i3cd294().write(|w| unsafe { w.sirreject().set_bit().mrreject().set_bit().devdynamicaddr().bits(da_with_parity)}); }
+            6 => { self.i3c.i3cd298().write(|w| unsafe { w.sirreject().set_bit().mrreject().set_bit().devdynamicaddr().bits(da_with_parity)}); }
+            7 => { self.i3c.i3cd29c().write(|w| unsafe { w.sirreject().set_bit().mrreject().set_bit().devdynamicaddr().bits(da_with_parity)}); }
+            _ => {},
+        }
+
+        if target.dynamic_addr == 0 {
+            config.need_da |= bit(pos);
+        }
+
+        Ok(())
+    }
+
+    fn do_ccc(&mut self, _config: &mut I3cConfig, _cmd: u8, _arg: u8) -> i32 {
+        // todo
+
+        0
+    }
+
+    fn do_entdaa(&mut self, config: &mut I3cConfig, index: u32) -> i32 {
+        let cmd = I3cCmd {
+            cmd_lo: field_prep(COMMAND_PORT_ATTR,        COMMAND_ATTR_ADDR_ASSGN_CMD as u32)
+                | field_prep(COMMAND_PORT_CMD,         I3C_CCC_ENTDAA as u32)
+                | field_prep(COMMAND_PORT_DEV_COUNT,   1)
+                | field_prep(COMMAND_PORT_DEV_INDEX,   index as u32)
+                | COMMAND_PORT_ROC
+                | COMMAND_PORT_TOC,
+                cmd_hi: field_prep(COMMAND_PORT_ATTR, COMMAND_ATTR_XFER_ARG as u32),
+                tx: None,
+                rx: None,
+                tx_len: 0,
+                rx_len: 0,
+                ret: 0,
+        };
+
+        let mut cmds = [cmd];
+        let mut xfer = I3cXfer::new(&mut cmds[..]);
+        xfer.ret = -1;
+
+        self.start_xfer(config, &mut xfer);
+
+        let mut waited_us: u32 = 0;
+        const TIMEOUT_US: u32 = 10_000;
+        while waited_us < TIMEOUT_US {
+            if xfer.ret != -1 {
+                break;
+            }
+            core::hint::spin_loop();
+            waited_us += 1;
+        }
+
+        if xfer.ret == -1 {
+            self.enter_halt(true, config);
+            self.reset_ctrl(RESET_CTRL_XFER_QUEUES);
+            self.exit_halt(config);
+            return -1;
+        }
+
+        // if cmds[0].rx_len != 0 {
+        // }
+        //
+        xfer.ret
+    }
+
+
+    fn bytes_to_pid(bytes: &[u8]) -> u64 {
+        bytes.iter()
+            .take(6)
+            .fold(0u64, |acc, &b| (acc << 8) | b as u64)
+    }
+
+    fn handle_unsolicited(&mut self, _config: &mut I3cConfig) {
+        // todo
+    }
+
+    fn do_daa(&mut self, config: &mut I3cConfig) -> i32 {
+        let need_da = config.need_da;
+        let mut pos: usize = 0;
+
+        while need_da != 0 {
+            if (need_da & bit(pos as u32)) == 0 {
+                pos = (pos + 1) % (config.maxdevs as usize);
+                continue;
+            }
+
+            let addr = config.addrs[pos];
+
+
+            if let Some(_target) = config.devs.find_i3c_by_dyn_mut(addr) {
+                // todo: ccc apis
+
+            }
+        }
+
+        0
+    }
+    fn priv_xfer(&mut self, _config: &mut I3cConfig, _xfer: &mut I3cXfer) -> i32 {
+        // todo
+        0
+    }
+
+    fn target_tx_write(&mut self, buf: &[u8]) {
+        self.wr_tx_fifo(buf);
+        let _len = buf.len() as u32;
+        // self.i3c.i3cd00c().write(|w| unsafe {
+        //     w.bits(cmd);
+        // });
+    }
+
+    fn drain_fifo<F>(&mut self, mut read_word: F, len: usize)
+    where
+        F: FnMut() -> u32,
+    {
+        let nwords = (len + 3) >> 2;
+        for _ in 0..nwords {
+            let _ = read_word();
+        }
+    }
+    fn handle_ibi_sir(&mut self, _config: &mut I3cConfig) {
+        // todo
+    }
+    fn handle_ibis(&mut self, config: &mut I3cConfig) {
+        let nibis = self.i3c.i3cd04c().read().ibistatuscnt().bits();
+
+        if nibis == 0 {
+            return;
+        }
+
+        for _ in 0..nibis {
+            let ibi_id = self.i3c.i3cd018().read().ibiidentifier().bits();
+            let ibi_addr = ibi_id >> 1 | 0x7E;
+            if ibi_addr != 2 && ibi_id & 1 == 1 {
+                // sir
+                self.handle_ibi_sir(config);
+            } else if ibi_addr == 2 && ibi_id & 1 == 0 {
+                // hot-join
+            } else {
+                // normal ibi
+                let len = self.i3c.i3cd018().read().in_band_intdata_len().bits() as usize;
+                self.drain_fifo(|| self.i3c.i3cd018().read().bits(), len);
+            }
+
+        }
+    }
+
+    fn i3c_aspeed_isr(&mut self, config: &mut I3cConfig) {
+        let status = self.i3c.i3cd03c().read().bits();
+        if status == 0 {
+            return;
+        }
+
+        if config.is_secondary {
+            if status & INTR_DYN_ADDR_ASSGN_STAT != 0 {
+                let _dyn_addr = self.i3c.i3cd004().read().dev_dynamic_addr().bits();
+                //todo
+            }
+
+            if (status & INTR_RESP_READY_STAT) != 0 {
+                //todo
+            }
+
+            if (status & INTR_CCC_UPDATED_STAT) != 0 {
+                //todo
+            }
+        } else {
+            if (status & INTR_RESP_READY_STAT) != 0 || (status & INTR_TRANSFER_ERR_STAT) != 0 {
+                self.end_xfer(config)
+            }
+
+            if (status & INTR_IBI_THLD_STAT) != 0 {
+                self.handle_ibis(config);
+            }
+        }
+
+        self.i3c.i3cd03c().write(|w| unsafe { w.bits(status) } );
     }
 }
