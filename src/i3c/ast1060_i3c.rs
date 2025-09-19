@@ -12,6 +12,8 @@ use heapless::Vec;
 // use ast1060_pac::I3cglobal;
 // #![allow(non_upper_case_globals)]
 
+pub const I3C_MSG_READ: u8  = 0x1;
+
 pub const I3C_BUS_I2C_STD_TLOW_MIN_NS:  u32 = 4_700;
 pub const I3C_BUS_I2C_STD_THIGH_MIN_NS: u32 = 4_000;
 pub const I3C_BUS_I2C_STD_TR_MAX_NS:    u32 = 1_000;
@@ -66,7 +68,16 @@ pub const COMMAND_ATTR_SHORT_ARG:       u32 = 2;
 pub const COMMAND_ATTR_ADDR_ASSGN_CMD:  u32 = 3;
 pub const COMMAND_ATTR_SLAVE_DATA_CMD:  u32 = 0;
 
+pub const COMMAND_PORT_ARG_DB:       u32 = bits(23, 16);
+pub const COMMAND_PORT_ARG_DATA_LEN: u32 = bits(15,  0);
+
+
 pub const I3C_CCC_ENTDAA:u32 = 0x7;
+pub const I3C_CCC_SETHID:u8 = 0x61;
+pub const I3C_CCC_DEVCTRL:u8 = 0x62;
+
+
+const MAX_CMDS: usize = 32;
 
 #[repr(u32)]
 pub enum SpeedI3c {
@@ -162,6 +173,18 @@ pub const RESPONSE_PORT_TID_MASK:  u32 = genmask(27, 24);
 pub const RESPONSE_PORT_DATA_LEN_SHIFT: u32 = 0;
 pub const RESPONSE_PORT_DATA_LEN_MASK:  u32 = genmask(15, 0);
 
+pub const RESPONSE_NO_ERROR: u32             = 0;
+pub const RESPONSE_ERROR_CRC: u32            = 1;
+pub const RESPONSE_ERROR_PARITY: u32         = 2;
+pub const RESPONSE_ERROR_FRAME: u32          = 3;
+pub const RESPONSE_ERROR_IBA_NACK: u32       = 4;
+pub const RESPONSE_ERROR_ADDRESS_NACK: u32   = 5;
+pub const RESPONSE_ERROR_OVER_UNDER_FLOW: u32= 6;
+pub const RESPONSE_ERROR_TRANSF_ABORT: u32   = 8;
+pub const RESPONSE_ERROR_I2C_W_NACK_ERR: u32 = 9;
+pub const RESPONSE_ERROR_EARLY_TERMINATE: u32= 10;
+pub const RESPONSE_ERROR_PEC_ERR: u32        = 12;
+
 pub const INTR_STATUS:     u32 = 0x3c;
 pub const INTR_STATUS_EN:  u32 = 0x40;
 pub const INTR_SIGNAL_EN:  u32 = 0x44;
@@ -190,6 +213,7 @@ pub enum I3cStatus {
     Invalid,
 }
 
+#[derive(Debug)]
 pub struct I3cCmd<'a> {
     pub cmd_lo: u32,
     pub cmd_hi: u32,
@@ -200,12 +224,22 @@ pub struct I3cCmd<'a> {
     pub ret: i32,
 }
 
-pub struct I3cXfer<'a> {
-    pub cmds: &'a mut [I3cCmd<'a>],
+pub struct I3cMsg<'a> {
+    pub buf: Option<&'a mut [u8]>,
+    pub actual_len: u32,
+    pub num_xfer: u32,
+    pub flags: u8,
+    pub hdr_mode: u8,
+    pub hdr_cmd_mode: u8,
+}
+
+pub struct I3cXfer<'cmds, 'buf> {
+    pub cmds: &'cmds mut [I3cCmd<'buf>],
     pub ret: i32,
 }
-impl<'a> I3cXfer<'a> {
-    pub fn new(cmds: &'a mut [I3cCmd<'a>]) -> Self {
+
+impl<'cmds, 'buf> I3cXfer<'cmds, 'buf> {
+    pub fn new(cmds: &'cmds mut [I3cCmd<'buf>]) -> Self {
         Self { cmds, ret: 0 }
     }
 
@@ -305,18 +339,24 @@ pub struct CccTargetPayload<'a> {
     /// `false` = write, `true` = read.
     pub rnw: bool,
     /// Data buffer for write (source) or read (destination).
-    pub data: &'a mut [u8],
+    pub data: Option<&'a mut [u8]>,
     /// Actual bytes transferred (driver fills on return).
     pub num_xfer: usize,
 }
 
+#[derive(Debug)]
+pub struct Ccc<'a> {
+    pub id: u8,
+    /// Optional CCC data immediately following the CCC byte.
+    pub data: Option<&'a mut [u8]>,
+    /// Actual bytes transferred (driver fills on return).
+    pub num_xfer: usize,
+}
 
 /// One CCC transaction description.
 #[derive(Debug)]
 pub struct CccPayload<'a, 'b> {
-    pub id: u8,
-    /// Optional CCC data immediately following the CCC byte.
-    pub ccc_data: Option<&'a mut [u8]>,
+    pub ccc: Option<Ccc<'a>>,
     /// Optional list of direct‑CCC target payloads.
     pub targets: Option<&'b mut [CccTargetPayload<'a>]>,
 }
@@ -382,16 +422,19 @@ pub trait HardwareInterface {
     fn i3c_device_find(&mut self, config: &I3cConfig, pid: u64);
     fn detach_i3c_dev(&mut self, config: &mut I3cConfig, pos: u8);
     fn attach_i3c_device(&mut self, config: &mut I3cConfig, target: &mut I3cDesc, addr: u8) -> I3cResult<()>;
-    fn do_ccc(&mut self, config: &mut I3cConfig, cmd: u8, arg: u8) -> i32;
+    fn do_ccc(&mut self, config: &mut I3cConfig, ccc: &mut CccPayload) -> i32;
     fn do_entdaa(&mut self, config: &mut I3cConfig, index: u32) -> i32;
     fn bytes_to_pid(bytes: &[u8]) -> u64;
     fn handle_unsolicited(&mut self, config: &mut I3cConfig);
     fn do_daa(&mut self, config: &mut I3cConfig) -> i32;
-    fn priv_xfer(&mut self, config: &mut I3cConfig, xfer: &mut I3cXfer) -> i32;
+    fn priv_xfer_build_cmds<'a>( &mut self, cmds: &mut [I3cCmd<'a>], msgs: &mut [I3cMsg<'a>], pos: u8,) -> i32;
+    fn priv_xfer(&mut self, config: &mut I3cConfig, target: &mut I3cDesc, msgs: &mut [I3cMsg]) -> i32;
     fn target_tx_write(&mut self, buf: &[u8]);
     fn handle_ibi_sir(&mut self, config: &mut I3cConfig);
     fn handle_ibis(&mut self, config: &mut I3cConfig);
     fn i3c_aspeed_isr(&mut self, config: &mut I3cConfig);
+    // ccc apis
+    fn ccc_do_events_set(&mut self, target: &mut I3cDesc, enable: bool, events: u8) -> i32;
 }
 
 pub trait Instance {
@@ -580,6 +623,18 @@ where
     }
     Err(PollError::Timeout)
 }
+
+// fn zero_cmd<'a>() -> I3cCmd<'a> {
+//     I3cCmd {
+//         cmd_lo: 0,
+//         cmd_hi: 0,
+//         tx: None,
+//         rx: None,
+//         tx_len: 0,
+//         rx_len: 0,
+//         ret: 0,
+//     }
+// }
 
 pub struct I3cController<H: HardwareInterface, L: Logger> {
     pub hw: H,
@@ -1269,10 +1324,142 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         Ok(())
     }
 
-    fn do_ccc(&mut self, _config: &mut I3cConfig, _cmd: u8, _arg: u8) -> i32 {
-        // todo
+    fn do_ccc<'a, 'b>(&mut self, config: &mut I3cConfig, payload: &mut CccPayload<'a, 'b>) -> i32 {
+        // init i3c_cmd to all 0
+        let mut cmds = [I3cCmd {
+            cmd_lo: 0,
+            cmd_hi: 0,
+            tx: None,
+            rx: None,
+            tx_len: 0,
+            rx_len: 0,
+            ret: 0,
+        }];
+        let dbp: bool;
+        let db: u8;
+        let mut rnw: bool = false;
+        let mut pos: u8 = 0;
+        let id: u8;
+        let mut is_broadcast: bool = false;
+        let mut ccc_num_xfer: Option<usize> = None;
 
-        0
+        {
+            let cmd = &mut cmds[0];
+
+            // Take `ccc` out as a short-lived mutable borrow, copy what we need into locals
+            let data_len = {
+                let ccc = match payload.ccc.as_mut() {
+                    Some(c) => c,
+                    None => return -22, // EINVAL: missing CCC
+                };
+
+                // Peek defining byte (if any) without keeping a borrow alive
+                (dbp, db) = match ccc.data.as_deref() {
+                    Some(d) if !d.is_empty() => {
+                        // For direct CCC, defining byte must be exactly 1 byte;
+                        // for broadcast, multiple bytes are allowed (payload write).
+                        (true, d[0])
+                    }
+                    _ => (false, 0),
+                };
+
+                id = ccc.id;
+                let len = ccc.data.as_deref().map(|d| d.len()).unwrap_or(0);
+                len
+            };
+
+            if id <= 0x7F {
+                // Broadcast CCC
+                is_broadcast = true;
+                if data_len > 0 {
+                    if let Some(ccc_ro) = payload.ccc.as_ref() {
+                        if let Some(d) = ccc_ro.data.as_deref() {
+                            cmd.tx = Some(d);
+                            cmd.tx_len = data_len as u32;
+                            ccc_num_xfer = Some(data_len); // optimistic assume all bytes written
+                        }
+                    }
+                }
+            } else {
+                let addr = {
+                    let tp = match payload.targets.as_deref_mut().and_then(|ts| ts.first_mut()) {
+                        Some(tp) => tp,
+                        None => return -22, // EINVAL: no target
+                    };
+
+                    if tp.rnw {
+                        if let Some(d) = tp.data.as_deref_mut() {
+                            if d.len() == 0 {
+                                return -22; // EINVAL: missing read buffer
+                            }
+                        } else {
+                            return -22; // EINVAL: missing read buffer
+                        }
+                        let len = tp.data.as_deref().map(|d| d.len()).unwrap_or(0);
+                        cmd.rx_len = len as u32;
+                        cmd.rx = tp.data.as_deref_mut();
+                    } else {
+                        let d = match tp.data.as_deref() {
+                            Some(d) if !d.is_empty() => d,
+                            _ => return -22, // EINVAL: missing write data
+                        };
+                        let len = d.len();
+                        cmd.tx_len = len as u32;
+                        cmd.tx = Some(d);
+                        tp.num_xfer = len; // optimistic assume all bytes written
+                    }
+                    rnw = tp.rnw;
+                    tp.addr
+                }; // target borrow ends here
+
+                pos = match self.get_addr_pos(config, addr) {
+                    Some(p) => p,
+                    None => return -22,
+                };
+            }
+        }
+
+        let cmd = &mut cmds[0];
+        cmd.cmd_hi = field_prep(COMMAND_PORT_ATTR, COMMAND_ATTR_XFER_ARG as u32)
+            | field_prep(COMMAND_PORT_ARG_DB, db.into());
+
+        if rnw == true {
+            cmd.cmd_hi |= field_prep(COMMAND_PORT_ARG_DATA_LEN, cmd.rx_len);
+        } else {
+            cmd.cmd_hi |= field_prep(COMMAND_PORT_ARG_DATA_LEN, cmd.tx_len);
+        }
+
+        cmd.cmd_lo = field_prep(COMMAND_PORT_ATTR, COMMAND_ATTR_ADDR_ASSGN_CMD as u32)
+            | field_prep(COMMAND_PORT_DEV_INDEX, pos as u32)
+            | field_prep(COMMAND_PORT_CMD, id.into())
+            | field_prep(COMMAND_PORT_READ_TRANSFER, if rnw { 1 } else { 0 })
+            | COMMAND_PORT_CP | COMMAND_PORT_ROC | COMMAND_PORT_TOC;
+
+        if dbp {
+            cmd.cmd_lo |= COMMAND_PORT_DBP;
+        }
+
+        if id == I3C_CCC_SETHID || id == I3C_CCC_DEVCTRL {
+            cmd.cmd_lo |= field_prep(COMMAND_PORT_SPEED, SpeedI3c::I2cFmAsI3c as u32);
+        }
+
+        let mut xfer = I3cXfer::new(&mut cmds[..]);
+        self.start_xfer(config, &mut xfer);
+
+        let ret = xfer.ret;
+        if ret == RESPONSE_ERROR_IBA_NACK.try_into().unwrap() {
+            return 0
+        }
+
+        drop(xfer);
+
+        if let (true, Some(n)) = (is_broadcast, ccc_num_xfer) {
+            if let Some(ccc_rw) = payload.ccc.as_mut() {
+                ccc_rw.num_xfer = n;
+            }
+        }
+
+        ret
     }
 
     fn do_entdaa(&mut self, config: &mut I3cConfig, index: u32) -> i32 {
@@ -1352,9 +1539,128 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
         0
     }
-    fn priv_xfer(&mut self, _config: &mut I3cConfig, _xfer: &mut I3cXfer) -> i32 {
-        // todo
+
+    fn priv_xfer_build_cmds<'a>(
+        &mut self,
+        cmds: &mut [I3cCmd<'a>],
+        msgs: &mut [I3cMsg<'a>],
+        pos: u8,
+    ) -> i32 {
+
+        let cmds_len = cmds.len();
+        if cmds_len != msgs.len() {
+            return -22; // EINVAL
+        }
+
+        for i in 0..cmds_len {
+            let (is_read, ptr, len) = {
+                let m = &mut msgs[i];
+                let is_read = (m.flags & I3C_MSG_READ) != 0;
+
+                if is_read {
+                    let buf = match m.buf.as_deref_mut() {
+                        Some(b) if !b.is_empty() => b,
+                        _ => return -22, // EINVAL
+                    };
+                    (true, buf.as_mut_ptr(), buf.len())
+                } else {
+                    let buf = match m.buf.as_deref() {
+                        Some(b) if !b.is_empty() => b,
+                        _ => return -22, // EINVAL
+                    };
+                    m.num_xfer = buf.len() as u32;
+                    (false, buf.as_ptr() as *mut u8, buf.len())
+                }
+            };
+
+            let cmd = &mut cmds[i];
+            *cmd = I3cCmd {
+                cmd_hi: field_prep(COMMAND_PORT_ATTR, COMMAND_ATTR_XFER_ARG as u32)
+                    | field_prep(COMMAND_PORT_ARG_DATA_LEN, len as u32),
+                    cmd_lo: field_prep(COMMAND_PORT_TID, i as u32)
+                        | field_prep(COMMAND_PORT_DEV_INDEX, pos as u32)
+                        | COMMAND_PORT_ROC,
+                        tx: None,
+                        rx: None,
+                        tx_len: 0,
+                        rx_len: 0,
+                        ret: 0,
+            };
+
+            if is_read {
+                let rx_slice: &'a mut [u8] = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+                cmd.rx = Some(rx_slice);
+                cmd.rx_len = len as u32;
+                cmd.cmd_lo |= COMMAND_PORT_READ_TRANSFER;
+            } else {
+                let tx_slice: &'a [u8] = unsafe { core::slice::from_raw_parts(ptr as *const u8, len) };
+                cmd.tx = Some(tx_slice);
+                cmd.tx_len = len as u32;
+            }
+
+            let is_last = i + 1 == cmds_len;
+            if is_last {
+                cmd.cmd_lo |= COMMAND_PORT_TOC;
+            }
+        }
+
         0
+    }
+
+    fn priv_xfer(&mut self, config: &mut I3cConfig, target: &mut I3cDesc, msgs: &mut [I3cMsg]) -> i32 {
+        if msgs.is_empty() {
+            return 0
+        }
+
+        if target.dynamic_addr == 0 {
+            return -22
+        }
+
+        let pos: u8 = match target.i3c_priv_idx {
+            Some(i) => config.privs[i as usize].pos,
+            None => return -22, // or your error path
+        };
+
+        if msgs.len() > MAX_CMDS {
+            return -22
+        }
+
+        let mut cmds: heapless::Vec<I3cCmd, MAX_CMDS> = heapless::Vec::new();
+
+        for _ in 0..msgs.len() {
+            cmds.push(I3cCmd {
+                cmd_lo: 0,
+                cmd_hi: 0,
+                tx: None,
+                rx: None,
+                tx_len: 0,
+                rx_len: 0,
+                ret: 0,
+            }).unwrap();
+        }
+
+        let ret = self.priv_xfer_build_cmds(&mut cmds.as_mut_slice(), msgs, pos);
+        if ret != 0 {
+            return ret;
+        }
+
+        let mut xfer = I3cXfer::new(cmds.as_mut_slice());
+        self.start_xfer(config, &mut xfer);
+        let ret = xfer.ret;
+        if ret < 0 {
+            self.enter_halt(true, config);
+            self.reset_ctrl(RESET_CTRL_XFER_QUEUES);
+            self.exit_halt(config);
+            return ret
+        }
+
+        for (i, m) in msgs.iter_mut().enumerate() {
+            if (m.flags & I3C_MSG_READ) != 0 {
+                m.actual_len = xfer.cmds[i].rx_len;
+            }
+        }
+
+        ret
     }
 
     fn target_tx_write(&mut self, buf: &[u8]) {
@@ -1431,5 +1737,18 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         }
 
         self.i3c.i3cd03c().write(|w| unsafe { w.bits(status) } );
+    }
+
+    fn ccc_do_events_set(&mut self, _target: &mut I3cDesc, _enable: bool, _events: u8) -> i32 {
+        // let ccc_payload = CccPayload {
+        //     ccc: Some(Ccc {
+        //         id: I3C_CCC_SET_EVENTS,
+        //         data: Some(&[events]),
+        //         num_xfer: 0,
+        //     }),
+        //     targets: Some(core::slice::from_mut(target)),
+        // };
+
+        return 0
     }
 }
