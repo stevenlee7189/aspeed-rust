@@ -2,7 +2,7 @@
 
 use crate::common::{DummyDelay, Logger};
 use core::marker::PhantomData;
-use core::fmt::Write;
+// use core::fmt::Write;
 use core::sync::atomic::{AtomicPtr, AtomicBool, Ordering};
 use core::cell::RefCell;
 use embedded_hal::delay::DelayNs;
@@ -10,7 +10,171 @@ use heapless::Vec;
 use heapless::spsc::Queue;
 use cortex_m::peripheral::NVIC;
 use critical_section::Mutex;
-use core::ptr::{read_volatile, write_volatile};
+use core::ptr::read_volatile;
+
+#[derive(Debug)]
+pub enum I3cDrvError {
+    NoDatPos,
+    NoMsgs,
+    TooManyMsgs,
+    InvalidArgs,
+    Timeout,
+    NoSuchDev,
+}
+
+pub trait CccOps {
+    fn entdaa_for_pos(&mut self, pos: u8) -> Result<u8, DaaError>;
+    fn getpid_bcr_dcr(&mut self, da: u8) -> Result<(u64, u8, u8), DaaError>;
+    fn setnewda(&mut self, from_da: u8, to_da: u8) -> Result<(), DaaError>;
+    fn enec_intr(&mut self, da: u8) -> Result<(), DaaError>;
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum OnConflict {
+    KeepTemp,
+    PickNextFree,
+    TrySwapWithDesired,
+}
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum DaaError {
+    Busy,
+    NoResponse,
+    NoAddrAvail,
+    DeviceNotFound,
+    SetNewDaFailed,
+    Internal,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DevKind { I3c, I2c }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeviceEntry {
+    pub kind: DevKind,
+    pub pid: Option<u64>,
+    pub static_addr: u8,
+    pub dyn_addr: u8,
+    pub desired_da: u8,
+    pub bcr: u8,
+    pub dcr: u8,
+    pub maxrd: u8,
+    pub maxwr: u8,
+    pub mrl: u16,
+    pub mwl: u16,
+    pub max_ibi: u8,
+    pub ibi_en: bool,
+    pub pos: Option<u8>,
+}
+
+pub struct AddrBook {
+    pub in_use: [bool; 128],
+    pub reserved: [bool; 128],
+}
+
+impl AddrBook {
+    pub const fn new() -> Self {
+        Self { in_use: [false;128], reserved: [false;128] }
+    }
+
+    #[inline]
+    pub fn is_free(&self, a: u8) -> bool {
+        !self.in_use[a as usize] && !self.reserved[a as usize]
+    }
+
+    pub fn reserve_defaults(&mut self) {
+        for a in 0..=7 { self.reserved[a as usize] = true; }
+        self.reserved[0x7E as usize] = true;
+        for i in 0..=7 {
+            let alt = 0x7E ^ (1u8 << i);
+            if alt <= 0x7E { self.reserved[alt as usize] = true; }
+        }
+    }
+
+    pub fn alloc_from(&mut self, start: u8) -> Option<u8> {
+        let mut a = start.max(8);
+        while a < 0x7F {
+            if self.is_free(a) {
+                // self.in_use[a as usize] = true;
+                return Some(a);
+            }
+            a += 1;
+        }
+        None
+    }
+
+    #[inline]
+    pub fn mark_use(&mut self, a: u8, used: bool) {
+        if a != 0 { self.in_use[a as usize] = used; }
+    }
+}
+
+pub struct Attached {
+    pub devices: Vec<DeviceEntry, 8>,
+    pub by_pos: [Option<u8>; 8],
+}
+
+impl Attached {
+    pub const fn new() -> Self {
+        Self { devices: heapless::Vec::new(), by_pos: [None; 8] }
+    }
+
+    pub fn attach(&mut self, dev: DeviceEntry) -> Result<usize, ()> {
+        let idx = self.devices.len();
+        self.devices.push(dev).map_err(|_| ())?;
+        Ok(idx)
+    }
+
+    pub fn detach(&mut self, dev_idx: usize) {
+        if dev_idx >= self.devices.len() {
+            return;
+        }
+
+        if let Some(pos) = self.devices[dev_idx].pos {
+            if let Some(p) = self.by_pos.get_mut(pos as usize) {
+                *p = None;
+            }
+        }
+
+        self.devices.remove(dev_idx);
+        for bp in &mut self.by_pos {
+            if let Some(idx) = *bp {
+                let idx_usize = idx as usize;
+                if idx_usize > dev_idx {
+                    *bp = Some((idx_usize - 1) as u8);
+                }
+            }
+        }
+    }
+
+    pub fn detach_by_pos(&mut self, pos: usize) {
+        if let Some(Some(dev_idx)) = self.by_pos.get(pos) {
+            self.detach(*dev_idx as usize);
+        }
+    }
+    pub fn pos_of(&self, dev_idx: usize) -> Option<u8> {
+        self.by_pos
+            .iter()
+            .position(|&v| v == Some(dev_idx as u8))
+            .map(|p| p as u8)
+    }
+    pub fn find_dev_idx_by_addr(&self, da: u8) -> Option<usize> {
+        self.devices.iter().position(|d| d.dyn_addr == da)
+    }
+    pub fn pos_of_addr(&self, da: u8) -> Option<u8> {
+        let dev_idx = self.devices.iter().position(|d| d.dyn_addr == da)?;
+        self.pos_of(dev_idx)
+    }
+    pub fn pos_of_pid(&self, pid: u64) -> Option<u8> {
+        let dev_idx = self.devices.iter().position(|d| d.pid == Some(pid))?;
+        self.pos_of(dev_idx)
+    }
+
+    #[inline]
+    pub fn map_pos(&mut self, pos: u8, idx: u8) { self.by_pos[pos as usize] = Some(idx); }
+
+    #[inline]
+    pub fn unmap_pos(&mut self, pos: u8) { self.by_pos[pos as usize] = None; }
+}
 
 const IBIQ_DEPTH: usize = 16;
 const IBI_DATA_MAX: usize = 16;
@@ -49,7 +213,7 @@ fn ensure_ibiq_split(bus: usize) {
     });
 }
 
-pub fn i3c_ibi_work_take_consumer(bus: usize) -> heapless::spsc::Consumer<'static, IbiWork, IBIQ_DEPTH> {
+pub fn i3c_ibi_workq_consumer(bus: usize) -> heapless::spsc::Consumer<'static, IbiWork, IBIQ_DEPTH> {
     assert!(bus < 4);
     critical_section::with(|cs| {
         let mut b = IBI_WORKQS[bus].borrow(cs).borrow_mut();
@@ -171,7 +335,9 @@ impl Completion {
     }
 }
 
-pub const I3C_MSG_READ: u8  = 0x1;
+pub const I3C_MSG_WRITE: u8 = 0x0;
+pub const I3C_MSG_READ: u8 = 0x1;
+pub const I3C_MSG_STOP: u8 = 0x2;
 
 pub const I3C_BUS_I2C_STD_TLOW_MIN_NS:  u32 = 4_700;
 pub const I3C_BUS_I2C_STD_THIGH_MIN_NS: u32 = 4_000;
@@ -236,8 +402,8 @@ pub const COMMAND_ATTR_SHORT_ARG:       u32 = 2;
 pub const COMMAND_ATTR_ADDR_ASSGN_CMD:  u32 = 3;
 pub const COMMAND_ATTR_SLAVE_DATA_CMD:  u32 = 0;
 
-pub const COMMAND_PORT_ARG_DB:       u32 = bits(23, 16);
-pub const COMMAND_PORT_ARG_DATA_LEN: u32 = bits(15,  0);
+pub const COMMAND_PORT_ARG_DB:       u32 = bits(15, 8);
+pub const COMMAND_PORT_ARG_DATA_LEN: u32 = bits(31, 16);
 
 /// Device Address Table fields
 pub const DEV_ADDR_TABLE_LEGACY_I2C_DEV: u32 = bit(31);
@@ -248,6 +414,11 @@ pub const DEV_ADDR_TABLE_IBI_MDB:        u32 = bit(12);         // BIT(12)
 pub const DEV_ADDR_TABLE_IBI_PEC:        u32 = bit(11);         // BIT(11)
 pub const DEV_ADDR_TABLE_STATIC_ADDR:    u32 = bits(6, 0);     // GENMASK(6,0)
 
+pub const IBI_QUEUE_STATUS: u32 = 0x18;
+pub const IBIQ_STATUS_IBI_ID: u32 = bits(15, 8);
+pub const IBIQ_STATUS_IBI_ID_SHIFT: u32 = 8;
+pub const IBIQ_STATUS_IBI_DATA_LEN: u32 = bits(7, 0);
+pub const IBIQ_STATUS_IBI_DATA_LEN_SHIFT: u32 = 0;
 
 pub const I3C_BCR_IBI_PAYLOAD_HAS_DATA_BYTE: u32 = bit(2);
 
@@ -453,36 +624,6 @@ impl<'cmds, 'buf> I3cXfer<'cmds, 'buf> {
     }
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct I3cPriv {
-    pub pos: u8,
-    pub addr: u8,
-    pub ibi_enable: bool,
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct I3cDesc {
-    pub pid: u64,
-    pub static_addr: u8,
-    pub init_dyn_addr: u8,
-    pub dynamic_addr: u8,
-    pub bcr: u8,
-    pub dcr: u8,
-    pub maxrd: u8,
-    pub maxwr: u8,
-    pub max_read_turnaround: u32,
-    pub mrl: u16,
-    pub mwl: u16,
-    pub max_ibi: u8,
-    pub i3c_priv_idx: Option<u8>,
-}
-
-pub struct I2cDesc {
-    pub addr: u8,
-    pub lvr: u8,
-    pub i3c_priv_idx: Option<u8>,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct I3cPid(pub u64);
 
@@ -500,198 +641,6 @@ impl I3cDeviceId {
 
 pub const I3C_BROADCAST_ADDR: u8 = 0x7E;
 pub const I3C_MAX_ADDR: u8 = 0x7F;
-
-const WORD_BITS: usize = 32;
-const TOTAL_BITS: usize = ((I3C_MAX_ADDR as usize) + 1) * 2;
-const NWORDS: usize = (TOTAL_BITS + WORD_BITS - 1) / WORD_BITS;
-
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum I3cAddrSlotStatus {
-    Free   = 0b00,
-    I3cDev = 0b01,
-    I2cDev = 0b10,
-    Rsvd   = 0b11,
-}
-
-impl I3cAddrSlotStatus {
-    #[inline]
-    fn from_raw(v: u32) -> Self {
-        match (v & 0b11) as u8 {
-            0 => Self::Free,
-            1 => Self::I3cDev,
-            2 => Self::I2cDev,
-            _ => Self::Rsvd,
-        }
-    }
-}
-
-pub struct I3cAddrSlots {
-    words: [u32; NWORDS],
-}
-
-impl I3cAddrSlots {
-    pub const fn new() -> Self {
-        Self { words: [0; NWORDS] }
-    }
-
-    #[inline]
-    pub fn status(&self, addr: u8) -> I3cAddrSlotStatus {
-        if addr > I3C_MAX_ADDR { return I3cAddrSlotStatus::Rsvd; }
-        let bitpos = (addr as usize) * 2;
-        let idx    = bitpos / WORD_BITS;
-        let shift  = bitpos % WORD_BITS;
-        I3cAddrSlotStatus::from_raw((self.words[idx] >> shift) & 0b11)
-    }
-
-    #[inline]
-    pub fn set_status(&mut self, addr: u8, st: I3cAddrSlotStatus) {
-        if addr > I3C_MAX_ADDR { return; }
-        let bitpos = (addr as usize) * 2;
-        let idx    = bitpos / WORD_BITS;
-        let shift  = bitpos % WORD_BITS;
-        let mask   = !(0b11u32 << shift);
-        self.words[idx] = (self.words[idx] & mask) | (((st as u32) & 0b11) << shift);
-    }
-
-    #[inline]
-    pub fn next_free_from(&self, start_addr: u8) -> u8 {
-        let mut addr = start_addr.max(8);
-        while addr < I3C_MAX_ADDR {
-            if self.status(addr) == I3cAddrSlotStatus::Free {
-                return addr;
-            }
-            addr += 1;
-        }
-        0
-    }
-
-    #[inline]
-    pub fn reserve_range(&mut self, start: u8, end_inclusive: u8) {
-        let s = start.min(I3C_MAX_ADDR);
-        let e = end_inclusive.min(I3C_MAX_ADDR);
-        let mut a = s;
-        while a <= e {
-            self.set_status(a, I3cAddrSlotStatus::Rsvd);
-            if a == u8::MAX { break; }
-            a += 1;
-        }
-    }
-    pub fn reserve_broadcast_neighbors(&mut self) {
-        const BROADCAST: u8 = I3C_BROADCAST_ADDR;
-        self.set_status(BROADCAST, I3cAddrSlotStatus::Rsvd);
-        for i in 0..=7 {
-            let alt = BROADCAST ^ (1u8 << i);
-            if alt <= I3C_MAX_ADDR {
-                self.set_status(alt, I3cAddrSlotStatus::Rsvd);
-            }
-        }
-    }
-}
-
-pub struct I3cDevAttachedList<const I3C_MAX: usize, const I2C_MAX: usize> {
-    pub addr_slots: I3cAddrSlots,
-    pub i3c_devices: Vec<I3cDesc, I3C_MAX>,
-    pub i2c_devices: Vec<I2cDesc, I2C_MAX>,
-}
-
-impl<const I3C_MAX: usize, const I2C_MAX: usize> I3cDevAttachedList<I3C_MAX, I2C_MAX> {
-    pub fn new() -> Self {
-        let mut slots = I3cAddrSlots::new();
-        slots.reserve_range(0, 7);
-        Self {
-            addr_slots: slots,
-            i3c_devices: Vec::new(),
-            i2c_devices: Vec::new(),
-        }
-    }
-
-    #[inline]
-    pub fn slot_status(&self, addr: u8) -> I3cAddrSlotStatus {
-        self.addr_slots.status(addr)
-    }
-
-    #[inline]
-    pub fn next_free_da(&self, start_addr: u8) -> u8 {
-        self.addr_slots.next_free_from(start_addr)
-    }
-
-    #[inline]
-    pub fn mark_i3c(&mut self, addr: u8) {
-        self.addr_slots.set_status(addr, I3cAddrSlotStatus::I3cDev);
-    }
-
-    #[inline]
-    pub fn mark_i2c(&mut self, addr: u8) {
-        self.addr_slots.set_status(addr, I3cAddrSlotStatus::I2cDev);
-    }
-
-    #[inline]
-    pub fn mark_free(&mut self, addr: u8) {
-        self.addr_slots.set_status(addr, I3cAddrSlotStatus::Free);
-    }
-    #[inline]
-    pub fn find_index_by_dyn(&self, addr: u8) -> Option<usize> {
-        self.i3c_devices
-            .iter()
-            .position(|d| d.dynamic_addr == addr)
-    }
-
-    #[inline]
-    pub fn find_i3c_by_dyn(&self, addr: u8) -> Option<&I3cDesc> {
-        self.i3c_devices.iter().find(|d| d.dynamic_addr == addr)
-    }
-
-    #[inline]
-    pub fn find_i3c_by_dyn_mut(&mut self, addr: u8) -> Option<&mut I3cDesc> {
-        self.i3c_devices.iter_mut().find(|d| d.dynamic_addr == addr)
-    }
-
-    #[inline]
-    pub fn find_index_by_pid(&self, id: I3cDeviceId) -> Option<usize> {
-        if id.pid.has_random_lower32() {
-            let want = id.pid.manuf_id();
-            self.i3c_devices
-                .iter()
-                .position(|d| I3cPid(d.pid).manuf_id() == want)
-        } else {
-            self.i3c_devices
-                .iter()
-                .position(|d| d.pid == id.pid.0)
-        }
-    }
-
-    #[inline]
-    pub fn find_i3c_by_pid(&self, id: I3cDeviceId) -> Option<&I3cDesc> {
-        self.find_index_by_pid(id).map(|i| &self.i3c_devices[i])
-    }
-
-    #[inline]
-    pub fn find_i3c_by_pid_mut(&mut self, id: I3cDeviceId) -> Option<&mut I3cDesc> {
-        if let Some(i) = self.find_index_by_pid(id) {
-            Some(&mut self.i3c_devices[i])
-        } else {
-            None
-        }
-    }
-}
-
-pub trait HasI3cPid { fn pid(&self) -> I3cPid; }
-impl HasI3cPid for I3cDesc { #[inline] fn pid(&self) -> I3cPid { I3cPid(self.pid) } }
-
-pub fn i3c_dev_list_find<'a, T, I>(iter: I, id: I3cDeviceId) -> Option<&'a T>
-where
-    I: IntoIterator<Item = &'a T>,
-    T: HasI3cPid,
-{
-    if id.pid.has_random_lower32() {
-        let want = id.pid.manuf_id();
-        iter.into_iter().find(|d| d.pid().manuf_id() == want)
-    } else {
-        let want = id.pid.0;
-        iter.into_iter().find(|d| d.pid().0 == want)
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GetStatusFormat {
@@ -753,10 +702,10 @@ pub struct I3cConfig {
     pub common: CommonState,
 
     pub target_config: Option<&'static mut I3cTargetConfig>,
-    pub devs: I3cDevAttachedList<8, 0>,
+    pub addrbook: AddrBook,
+    pub attached: Attached,
 
     // Concurrency
-    // pub curr_xfer: Option<&'static mut I3cXfer<'static>>,
     pub curr_xfer: AtomicPtr<()>,
 
     // Timing/phy params (ns)
@@ -772,13 +721,11 @@ pub struct I3cConfig {
 
     // Tables/indices
     pub maxdevs: u16,
-    pub datstartaddr: u16,
     pub free_pos: u32,
     pub need_da: u32,
 
     pub addrs: [u8; 8],
     pub dcr: u32,
-    pub privs: [I3cPriv; 8],
 
     // Target-mode data
     pub sir_allowed_by_sw: bool,
@@ -838,10 +785,9 @@ pub struct I3cTargetConfig {
 
 pub trait HardwareInterface {
     fn init(&mut self, config: &mut I3cConfig);
-    fn addr_slots_init(&mut self, config: &mut I3cConfig) -> i32;
-    fn pre_attach_known_i3c_devices(&mut self, config: &mut I3cConfig) -> i32;
     fn bus_num(&self) -> u8;
     fn enable_irq(&mut self);
+    fn disable_irq(&mut self);
     fn i3c_enable(&mut self, config: &I3cConfig);
     fn i3c_disable(&mut self, is_secondary: bool);
     fn core_reset_assert(&mut self, bus: u8);
@@ -859,7 +805,6 @@ pub trait HardwareInterface {
     fn i3c_toggle_scl_in(&mut self, count:u32);
     fn gen_internal_stop(&mut self);
     fn i3c_bus_init(&mut self, config: &mut I3cConfig);
-    fn i3c_bus_setdasa(&mut self, config: &mut I3cConfig) -> (i32, bool);
     fn even_parity(byte: u8) -> bool;
     fn set_ibi_mdb(&mut self, mdb: u8);
     fn exit_halt(&mut self, config: &mut I3cConfig);
@@ -874,19 +819,28 @@ pub trait HardwareInterface {
         F: FnMut() -> u32;
     fn rd_rx_fifo(&mut self, out: &mut [u8]);
     fn rd_ibi_fifo(&mut self, out: &mut [u8]);
-    fn ibi_enable(&mut self, config: &mut I3cConfig, dev_idx: usize) -> i32;
+    fn enable_dev_ibi(&mut self, pos: usize, ibi_has_data_byte: bool) -> i32;
+    fn do_dev_entdaa(&mut self, config: &mut I3cConfig, dev_idx: u32) -> i32;
+    fn ibi_enable(&mut self, config: &mut I3cConfig, addr: u8) -> Result<(), I3cDrvError>;
     fn start_xfer(&mut self, config: &mut I3cConfig, xfer: &mut I3cXfer);
     fn end_xfer(&mut self, config: &mut I3cConfig);
     fn get_addr_pos(&mut self, config: &I3cConfig, addr: u8) -> Option<u8>;
-    fn detach_i3c_dev(&mut self, config: &mut I3cConfig, pos: usize);
-    fn attach_i3c_dev( &mut self, config: &mut I3cConfig, dev_idx: usize, addr: u8,) -> i32;
+    fn detach_i3c_dev(&mut self, pos: usize);
+    fn attach_i3c_dev( &mut self, pos: usize, addr: u8,) -> i32;
     fn do_ccc(&mut self, config: &mut I3cConfig, ccc: &mut CccPayload) -> i32;
     fn do_entdaa(&mut self, config: &mut I3cConfig, index: u32) -> i32;
     fn bytes_to_pid(bytes: &[u8]) -> u64;
     fn handle_unsolicited(&mut self, config: &mut I3cConfig);
-    fn do_daa(&mut self, config: &mut I3cConfig) -> i32;
+    fn do_daa(
+    cfg: &mut I3cConfig,
+    ccc: &mut impl CccOps,
+    pos: u8,
+    desired_da: u8,
+    enable_ibi_after: bool,
+        conflict: OnConflict,
+) -> Result<u8, DaaError>;
     fn priv_xfer_build_cmds<'a>( &mut self, cmds: &mut [I3cCmd<'a>], msgs: &mut [I3cMsg<'a>], pos: u8,) -> i32;
-    fn priv_xfer(&mut self, config: &mut I3cConfig, dev_idx: usize, msgs: &mut [I3cMsg]) -> i32;
+    fn priv_xfer(&mut self, config: &mut I3cConfig, pid: u64, msgs: &mut [I3cMsg]) -> Result<(), I3cDrvError>;
     fn target_tx_write(&mut self, buf: &[u8]);
     fn handle_ibi_sir(&mut self, config: &mut I3cConfig, addr: u8, len: usize);
     fn handle_ibis(&mut self, config: &mut I3cConfig);
@@ -965,7 +919,8 @@ impl I3cConfig {
         Self {
             common: CommonState::default(),
             target_config: None,
-            devs: I3cDevAttachedList::new(),
+            addrbook: AddrBook::new(),
+            attached: Attached::new(),
             curr_xfer: AtomicPtr::new(core::ptr::null_mut()),
             core_period: 0,
             i2c_scl_hz: 0,
@@ -977,16 +932,49 @@ impl I3cConfig {
             sda_tx_hold_ns: 0,
             is_secondary: false,
             maxdevs: 8,
-            datstartaddr: 0,
             free_pos: 0,
             need_da: 0,
             addrs: [0; 8],
             dcr: 0,
-            privs: [I3cPriv::default(); 8],
             sir_allowed_by_sw: false,
             target_ibi_done: Completion::new(),
             target_data_done: Completion::new(),
         }
+    }
+
+    pub fn init_runtime_fields(&mut self) {
+        self.addrbook = AddrBook::new();
+        self.addrbook.reserve_defaults();
+        self.attached = Attached::new();
+    }
+    pub fn pick_initial_da(&mut self, static_addr: u8, desired: u8) -> Option<u8> {
+        if desired != 0 && self.addrbook.is_free(desired) {
+            self.addrbook.mark_use(desired, true);
+            return Some(desired);
+        }
+        if static_addr != 0 && self.addrbook.is_free(static_addr) {
+            self.addrbook.mark_use(static_addr, true);
+            return Some(static_addr);
+        }
+        self.addrbook.alloc_from(8)
+    }
+
+    pub fn reassign_da(&mut self, from: u8, to: u8) -> Result<(), ()> {
+        if from == to { return Ok(()); }
+        if !self.addrbook.is_free(to) { return Err(()); }
+
+        self.addrbook.mark_use(from, false);
+        self.addrbook.mark_use(to,   true);
+
+        if let Some((i, mut e)) = self.attached.devices
+            .iter()
+                .enumerate()
+                .find_map(|(i, d)| (d.dyn_addr == from).then_some((i, *d)))
+        {
+            e.dyn_addr = to;
+            self.attached.devices[i] = e;
+            Ok(())
+        } else { Err(()) }
     }
 }
 
@@ -1167,8 +1155,56 @@ impl<H: HardwareInterface, L: Logger> I3cController<H, L> {
     }
 
     fn irq_trampoline(ctx: usize) {
-        let me: &mut Self = unsafe { &mut *(ctx as *mut Self) };
-        me.hw.i3c_aspeed_isr(&mut me.config);
+        let ctrl: &mut Self = unsafe { &mut *(ctx as *mut Self) };
+        ctrl.hw.i3c_aspeed_isr(&mut ctrl.config);
+    }
+
+    pub fn attach_i3c_dev(&mut self, pid: u64, desired_da: u8, slot: u8) -> Result<(), ()> {
+        // let da = self.config.pick_initial_da(static_addr, desired_da).ok_or(())?;
+        if desired_da == 0 || desired_da >= I3C_BROADCAST_ADDR {
+            return Err(());
+        }
+
+        let dev = DeviceEntry {
+            kind: DevKind::I3c,
+            pid: Some(pid),
+            static_addr: 0,
+            dyn_addr: desired_da,
+            desired_da,
+            bcr: 0, dcr: 0,
+            maxrd: 0, maxwr: 0,
+            mrl: 0, mwl: 0,
+            max_ibi: 0,
+            ibi_en: false,
+            pos: Some(slot),
+        };
+
+        let idx = self.config.attached.attach(dev)?;
+        self.config.attached.map_pos(slot, idx as u8);
+        self.config.addrbook.mark_use(desired_da, true);
+        self.hw.attach_i3c_dev(slot.into(), desired_da);
+        // self.hw.enable_dev_ibi(slot.into(), true);
+
+        Ok(())
+    }
+    pub fn detach_i3c_dev(&mut self, pos: usize) -> Result<(), ()> {
+        self.config.attached.detach_by_pos(pos);
+        self.hw.detach_i3c_dev(pos.into());
+
+        Ok(())
+    }
+    pub fn detach_i3c_dev_by_idx(&mut self, dev_idx: usize) {
+        let dev = &self.config.attached.devices[dev_idx];
+
+        if dev.dyn_addr != 0 {
+            self.config.addrbook.mark_use(dev.dyn_addr, false);
+        }
+
+        if let Some(pos) = dev.pos {
+            self.hw.detach_i3c_dev(pos.into());
+        }
+
+        self.config.attached.detach(dev_idx);
     }
 }
 
@@ -1278,7 +1314,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         self.init_pid(config, I3C::BUS_NUM);
 
         // Get max device and DAT start addr
-        config.datstartaddr = self.i3c.i3cd05c().read().pdevaddrtablestartaddr().bits();
         config.maxdevs = self.i3c.i3cd05c().read().devaddrtabledepth().bits();
         config.free_pos = if config.maxdevs == 32 {
             u32::MAX
@@ -1293,6 +1328,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                 w.sirreject().set_bit()
                     .mrreject().set_bit()
             });
+            i3c_debug!(self.logger, "dat_addr[{}] = {:#x}", i, i3c_dat_read!(self, i));
         }
 
         self.i3c.i3cd02c().write(|w| unsafe {
@@ -1303,23 +1339,18 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         });
         self.i3c.i3cd000().modify(|_, w| w.hot_join_ack_nack_ctrl().set_bit());
 
-        self.addr_slots_init(config);
-        self.pre_attach_known_i3c_devices(config);
-
-        let free_slot = config.devs.next_free_da(0);
         if config.is_secondary {
-            self.i3c.i3cd004().modify(|_, w| unsafe {
-                w.dev_static_addr().bits(free_slot)
+            self.i3c.i3cd004().write(|w| unsafe {
+                w.dev_static_addr().bits(8)
                     .static_addr_valid().set_bit()
             });
         } else {
-            self.i3c.i3cd004().modify(|_, w| unsafe {
-                w.dev_dynamic_addr().bits(free_slot)
+            self.i3c.i3cd004().write(|w| unsafe {
+                w.dev_dynamic_addr().bits(8)
                     .dynamic_addr_valid().set_bit()
             });
         }
 
-        config.devs.mark_i3c(free_slot);
         self.i3c_enable(config);
 
         i3c_debug!(self.logger, "i3c enabled");
@@ -1329,75 +1360,13 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         }
 
         // Enable hot-join
-        // temp
-        self.i3c.i3cd040().modify(|_, w| w.ibithldstaten().set_bit());
-        self.i3c.i3cd044().modify(|_, w| w.ibithldsignalen().set_bit());
-        // temp end
+        if !config.is_secondary {
+            self.i3c.i3cd040().modify(|_, w| w.ibithldstaten().set_bit());
+            self.i3c.i3cd044().modify(|_, w| w.ibithldsignalen().set_bit());
+        }
         self.i3c.i3cd000().modify(|_, w| w.hot_join_ack_nack_ctrl().clear_bit());
         i3c_debug!(self.logger, "i3c init done");
-        unsafe {
-            for reg in 0..80 {
-                let reg_base = 0x7e7a4000;
-                let reg_val: u32;
-                reg_val = read_volatile((reg_base + reg * 4) as *const u32);
-                // reg as hex
-                i3c_debug!(self.logger, "i3c reg {:#04x}: {:#010x}", reg * 4, reg_val);
-            }
-        }
-    }
-
-    fn addr_slots_init(&mut self, config: &mut I3cConfig) -> i32 {
-
-        config.devs.addr_slots = I3cAddrSlots::new();
-
-        config.devs.addr_slots.reserve_range(0, 7);
-
-        config.devs.addr_slots.reserve_broadcast_neighbors();
-
-        {
-            let (addr_slots, i2c_devs) = (&mut config.devs.addr_slots, &config.devs.i2c_devices);
-            for d in i2c_devs.iter() {
-                if d.addr != 0 {
-                    addr_slots.set_status(d.addr, I3cAddrSlotStatus::I2cDev);
-                }
-            }
-        }
-        0
-    }
-
-    fn pre_attach_known_i3c_devices(&mut self, config: &mut I3cConfig) -> i32 {
-        i3c_debug!(self.logger, "pre attach known i3c devices");
-        let n = config.devs.i3c_devices.len();
-        i3c_debug!(self.logger, "known i3c devices: {}", n);
-        for idx in 0..n {
-            if config.devs.i3c_devices[idx].i3c_priv_idx.is_some() {
-                continue;
-            }
-
-            let da = {
-                let d = &config.devs.i3c_devices[idx];
-                if d.dynamic_addr != 0 {
-                    d.dynamic_addr
-                } else if d.static_addr != 0 {
-                    d.static_addr
-                } else {
-                    continue;
-                }
-            };
-
-            if config.devs.addr_slots.status(da) != I3cAddrSlotStatus::Free {
-                continue;
-            }
-
-            let ret = self.attach_i3c_dev(config, idx, da);
-            if ret != 0 {
-                return ret;
-            }
-            config.devs.mark_i3c(da);
-            i3c_debug!(self.logger, "pre-attached i3c device at da: {:#x}", da);
-            self.ibi_enable(config, idx);
-        }
-        0
+        i3c_debug!(self.logger, "i3c i3cd000: {:#x}", self.i3c.i3cd000().read().bits());
     }
 
     fn bus_num(&self) -> u8 {
@@ -1414,6 +1383,17 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                 3 => NVIC::unmask(ast1060_pac::Interrupt::i3c3),
                 _ => {}
             }
+        }
+    }
+
+    fn disable_irq(&mut self) {
+        i3c_debug!(self.logger, "disable irq");
+        match I3C::BUS_NUM {
+            0 => NVIC::mask(ast1060_pac::Interrupt::i3c),
+            1 => NVIC::mask(ast1060_pac::Interrupt::i3c1),
+            2 => NVIC::mask(ast1060_pac::Interrupt::i3c2),
+            3 => NVIC::mask(ast1060_pac::Interrupt::i3c3),
+            _ => {}
         }
     }
 
@@ -1474,6 +1454,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
     fn init_clock(&mut self, config: &mut I3cConfig) {
         let clk_rate = self.get_clock_rate();
+        i3c_debug!(self.logger, "i3c clock rate: {} Hz", clk_rate);
         config.core_period = (1_000_000_000_u32).div_ceil(clk_rate);
 
         // I2C FM
@@ -1495,12 +1476,11 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         });
 
         // I3C OD
-        let hcnt = config.i3c_od_scl_hi_period_ns.div_ceil(config.core_period);
-        let lcnt = config.i3c_od_scl_lo_period_ns.div_ceil(config.core_period);
         self.i3c.i3cd0b4().write(|w| unsafe {
-            w.i3codhcnt().bits(hcnt as u8)
-                .i3codlcnt().bits(lcnt as u8)
+            w.i3codhcnt().bits(0x64)
+                .i3codlcnt().bits(0x64)
         });
+
 
         // I3C PP
         let hcnt = config.i3c_pp_scl_hi_period_ns.div_ceil(config.core_period);
@@ -1511,29 +1491,21 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         });
 
         // SDA TX hold time
-        let lcnt: u32 = (config.sda_tx_hold_ns)
+        let mut lcnt: u32 = (config.sda_tx_hold_ns)
             .div_ceil(config.core_period)
             .clamp(SDA_TX_HOLD_MIN, SDA_TX_HOLD_MAX);
 
-        self.i3c.i3cd0d0().modify(|_, w| unsafe {
-            w.sdatxhold().bits(lcnt as u8)
+        lcnt &= 0xfff8ffff;
+        self.i3c.i3cd0d0().write(|w| unsafe {
+            w.bits(lcnt)
+        });
+        self.i3c.i3cd0d4().write(|w| unsafe {
+            w.bits(0xffff007c)
         });
     }
 
     fn get_clock_rate(&self) -> u32 {
-        const HPLL_HZ: u32 = 1_000_000_000;
-        const SPLL_HZ: u32 =   480_000_000;
-
-        let r = self.scu.scu310().read();
-
-        let src_hz = if r.i3cclk_source_sel().bit() { HPLL_HZ } else { SPLL_HZ };
-
-        let div = match r.i3cclk_divider_sel().bits() {
-            0 => 2,
-            n => u32::from(n) + 1,
-        };
-
-        src_hz / div
+        200_000_000
     }
 
     fn calc_i2c_clk(&mut self, fscl_hz: u32) -> (u32, u32) {
@@ -1573,15 +1545,17 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         });
 
         let rev_id: u32 = self.scu.scu004().read().hw_rev_id().bits().into();
-        let reg: u32 = rev_id << 16 | u32::from(bus) << 12;
+        let mut reg: u32 = rev_id << 16 | u32::from(bus) << 12;
+        reg |= 0xa0000000;
         self.i3c.i3cd074().write(|w| unsafe { w.bits(reg) });
-        let mut reg: u32 = self.scu.scu078().read().bits();
+        let mut reg: u32 = self.i3c.i3cd078().read().bits();
         reg &= !SLV_DCR_MASK;
         reg |= (config.dcr << 8) | 0x66;
         self.i3c.i3cd078().write(|w| unsafe { w.bits(reg) });
     }
 
     fn enter_sw_mode(&mut self) {
+        i3c_debug!(self.logger, "enter sw mode");
         let bus = I3C::BUS_NUM;
         let mut reg = read_i3cg_reg1!(self, bus);
         reg |= I3CG_REG1_SCL_IN_SW_MODE_VAL | I3CG_REG1_SDA_IN_SW_MODE_VAL;
@@ -1600,6 +1574,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     fn i3c_enable(&mut self, config: &I3cConfig) {
         i3c_debug!(self.logger, "i3c enable");
         if config.is_secondary {
+            i3c_debug!(self.logger, "i3c enable as secondary");
             self.i3c.i3cd038().write(|w| unsafe { w.bits(0) });
             self.enter_sw_mode();
             // Enable hot-join
@@ -1608,14 +1583,17 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                     .ibipayloaden().set_bit()
                     .enbl_i3cctrl().set_bit()
             });
+            i3c_debug!(self.logger, "1 i3c i3cd000: {:#x}", self.i3c.i3cd000().read().bits());
             let wait_cnt = &self.i3c.i3cd0d4().read().i3cibifree().bits();
             let wait_ns = u32::from(*wait_cnt) * config.core_period;
             let mut delay = DummyDelay {};
-            delay.delay_ns(wait_ns as u32);
+            i3c_debug!(self.logger, "wait_ns: {}", wait_ns);
+            delay.delay_ns(wait_ns * 100 as u32);
             self.i3c_toggle_scl_in(8);
             if self.i3c.i3cd000().read().enbl_i3cctrl().bit_is_set() {
                 self.gen_internal_stop();
             }
+            i3c_debug!(self.logger, "2 i3c i3cd000: {:#x}", self.i3c.i3cd000().read().bits());
             self.exit_sw_mode();
         } else {
             self.i3c.i3cd000().modify(|_, w| {
@@ -1657,7 +1635,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         i3c_debug!(self.logger, "i3c bus init");
         let ret = self.ccc_do_rstact_all(config , CccRstActDefByte::CccRstActResetWholeTarget);
         if ret != 0 {
-            i3c_debug!(self.logger, "ccc_do_rstact_all error: {}", ret);
             self.ccc_do_rstact_all(config , CccRstActDefByte::CccRstActPeriphralOnly);
             return;
         }
@@ -1665,64 +1642,10 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         self.ccc_do_rstdaa_all(config);
         let events = I3C_CCC_EVT_ALL;
         self.ccc_do_events_all_set(config, false, events);
-        let (ret, need_da) = self.i3c_bus_setdasa(config);
-
-        if ret != 0 {
-            i3c_debug!(self.logger, "i3c_bus_setdasa error: {}", ret);
-            return;
-        }
-
-        i3c_debug!(self.logger, "need_daa: {}", need_da);
-        if need_da {
-            if self.do_daa(config) != 0 {
-                self.do_daa(config);
-            }
-        }
-
-        i3c_debug!(self.logger, "i3c bus init done");
         self.ccc_do_events_all_set(config, true, I3C_CCC_EVT_HJ);
+        i3c_debug!(self.logger, "i3c bus init done");
     }
 
-    fn i3c_bus_setdasa(&mut self, config: &mut I3cConfig) -> (i32, bool) {
-        let mut need_daa = false;
-        let n = config.devs.i3c_devices.len();
-
-        for i in 0..n {
-            let (static_addr, init_dyn_addr) = {
-                let d = &config.devs.i3c_devices[i];
-                (d.static_addr, d.init_dyn_addr)
-            };
-
-            if static_addr == 0 {
-                need_daa = true;
-                continue;
-            }
-
-            i3c_debug!(self.logger, "SETDASA for 0x{:02x}", static_addr);
-
-            let ret = self.ccc_do_setdasa(config, i);
-            if ret == 0 {
-                let new_dyn = if init_dyn_addr != 0 { init_dyn_addr } else { static_addr };
-                {
-                    let d = &mut config.devs.i3c_devices[i];
-                    d.dynamic_addr = new_dyn;
-                }
-
-                if new_dyn != static_addr {
-                    config.devs.mark_free(static_addr);
-                    config.devs.mark_i3c(new_dyn);
-                    let _ = self.ibi_enable(config, i);
-                }
-            } else {
-                let _ = self.detach_i3c_dev(config, i);
-                i3c_debug!(self.logger,
-                    "SETDASA error on address 0x{:02x} ({})", static_addr, ret);
-                continue;
-            }
-        }
-
-        (0, need_daa)
-    }
     fn even_parity(byte: u8) -> bool {
         let mut parity = false;
         let mut b = byte;
@@ -1853,18 +1776,19 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         self.rd_fifo(|| self.i3c.i3cd018().read().bits(), out);
     }
 
-    fn ibi_enable(&mut self, config: &mut I3cConfig, dev_idx: usize) -> i32 {
-
+    fn ibi_enable(&mut self, config: &mut I3cConfig, addr: u8) -> Result<(), I3cDrvError> {
+        let dev_idx = config.attached.find_dev_idx_by_addr(addr)
+            .ok_or(I3cDrvError::NoSuchDev)?;
         i3c_debug!(self.logger, "ibi_enable: dev_idx={}", dev_idx);
-        let target = config.devs.i3c_devices[dev_idx as usize];
-        let pos: u8 = match target.i3c_priv_idx {
-            Some(i) => config.privs[i as usize].pos,
-            None => return -22, // or your error path
-        };
+        let pos_opt = config.attached.pos_of(dev_idx)
+            .or(config.attached.devices[dev_idx].pos);
 
+        let pos: u8 = pos_opt.ok_or(I3cDrvError::NoDatPos)?;
         i3c_debug!(self.logger, "ibi_enable: pos={}", pos);
-        let tgt_bcr:u32 = target.bcr as u32;
+        let dev = &config.attached.devices[dev_idx];
+        let tgt_bcr: u32 = dev.bcr as u32;
         let mut reg = i3c_dat_read!(self, pos as u32);
+        reg &= !DEV_ADDR_TABLE_SIR_REJECT;
         if tgt_bcr & I3C_BCR_IBI_PAYLOAD_HAS_DATA_BYTE != 0 {
             reg |= DEV_ADDR_TABLE_IBI_MDB | DEV_ADDR_TABLE_IBI_PEC;
         }
@@ -1885,10 +1809,16 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             w.ibithldsignalen().set_bit()
         });
 
-        let events = I3C_CCC_EVT_INTR;
-        let _ = self.ccc_do_events_set(config, target.dynamic_addr, true, events);
 
-        0
+        let events = I3C_CCC_EVT_INTR;
+        let _ = self.ccc_do_events_set(config, dev.dyn_addr, true, events);
+
+        i3c_debug!(self.logger, "i3cd030 (SIR reject) = {:#x}", sir_reject);
+        i3c_debug!(self.logger, "i3cd040 (IBI thld) = {:#x}", self.i3c.i3cd040().read().bits());
+        i3c_debug!(self.logger, "i3cd044 (IBI thld sig) = {:#x}", self.i3c.i3cd044().read().bits());
+        i3c_debug!(self.logger, "i3cd280 dat_addr[{}] = {:#x}", pos, i3c_dat_read!(self, pos as u32));
+        i3c_debug!(self.logger, "ibi_enable done");
+        Ok(())
     }
 
     fn start_xfer(&mut self, config: &mut I3cConfig, xfer: &mut I3cXfer) {
@@ -1907,6 +1837,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             if let Some(tx) = cmd.tx {
                 let take = tx.len().min(cmd.tx_len as usize);
                 if take > 0 {
+                    i3c_debug!(self.logger, "start_xfer: write {} bytes", take);
                     self.wr_tx_fifo(&tx[..take]);
                 }
             }
@@ -1914,8 +1845,11 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         self.i3c.i3cd01c().modify(|_, w| unsafe {
             w.response_buffer_threshold_value().bits(xfer.ncmds() as u8 - 1)
         });
+        i3c_debug!(self.logger, "value of i3cd01c: {:#x}", self.i3c.i3cd01c().read().bits());
 
         for cmd in xfer.cmds.iter() {
+            i3c_debug!(self.logger,
+                "start_xfer: cmd: cmd_hi={:#x}, cmd_lo={:#x}", cmd.cmd_hi, cmd.cmd_lo);
             self.i3c.i3cd00c().write(|w| unsafe {
                 w.bits(cmd.cmd_hi)
             });
@@ -1929,11 +1863,13 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         i3c_debug!(self.logger, "end_xfer");
         let p = config.curr_xfer.swap(core::ptr::null_mut(), Ordering::AcqRel);
         if p.is_null() {
+            i3c_debug!(self.logger, "end_xfer: no current xfer");
             return;
         }
         let xfer: &mut I3cXfer = unsafe { &mut *(p.cast::<I3cXfer>()) };
 
         let nresp = self.i3c.i3cd04c().read().respbufblr().bits() as usize;
+        i3c_debug!(self.logger, "end_xfer: nresp={}", nresp);
 
         for _ in 0..nresp {
             let resp = self.i3c.i3cd010().read().bits();
@@ -1994,38 +1930,14 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             .map(|i| i as u8)
     }
 
-    fn detach_i3c_dev(&mut self, config: &mut I3cConfig, pos: usize) {
-
-        config.free_pos |= 1u32 << pos;
-        config.addrs[pos as usize] = 0;
-
+    fn detach_i3c_dev(&mut self, pos: usize) {
         i3c_dat_write!(self, pos as u32, |w| {
             w.sirreject().set_bit()
                 .mrreject().set_bit()
         });
     }
 
-    fn attach_i3c_dev( &mut self, config: &mut I3cConfig, dev_idx: usize, addr: u8,) -> i32 {
-        if dev_idx >= config.devs.i3c_devices.len() {
-            return -22;
-        }
-
-        let pos = match find_lsb_pos(config.free_pos) {
-            Some(p) if p < u32::from(config.maxdevs) => p as u8,
-            _ => return -22,
-        };
-        let pos_usize = pos as usize;
-
-        config.free_pos &= !bit(pos.into());
-        config.addrs[pos_usize] = addr;
-
-        config.privs[pos_usize].pos  = pos;
-        config.privs[pos_usize].addr = addr;
-
-        config.devs.i3c_devices[dev_idx].i3c_priv_idx = Some(pos);
-
-        config.devs.mark_i3c(addr);
-
+    fn attach_i3c_dev(&mut self, pos: usize, addr: u8,) -> i32 {
         let mut da_with_parity = addr;
         if Self::even_parity(addr) { da_with_parity |= 1 << 7; }
 
@@ -2035,14 +1947,10 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                 .devdynamicaddr().bits(da_with_parity)
         });
 
-        if config.devs.i3c_devices[dev_idx].dynamic_addr == 0 {
-            config.need_da |= bit(pos.into());
-        }
-
         0
     }
+
     fn do_ccc<'a, 'b>(&mut self, config: &mut I3cConfig, payload: &mut CccPayload<'a, 'b>) -> i32 {
-        i3c_debug!(self.logger, "do_ccc");
         // init i3c_cmd to all 0
         let mut cmds = [I3cCmd {
             cmd_lo: 0,
@@ -2054,8 +1962,8 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             ret: 0,
         }];
 
+        let mut pos = 0;
         let mut rnw: bool = false;
-        let mut pos: u8 = 0;
         let mut is_broadcast = false;
 
         let (id, data_len) = {
@@ -2066,7 +1974,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             (ccc.id, ccc.data.as_deref().map(|d| d.len()).unwrap_or(0))
         };
 
-        i3c_debug!(self.logger, "do_ccc: id=0x{:02x}, data_len={}", id, data_len);
         let dbp_is_direct = id > 0x7F;
         let db: u8 = if dbp_is_direct && data_len > 0 {
             payload.ccc.as_ref().and_then(|c| c.data.as_deref()).map(|d| d[0]).unwrap_or(0)
@@ -2074,13 +1981,11 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             0
         };
 
-        i3c_debug!(self.logger,
-            "do_ccc: dbp_is_direct={}, db=0x{:02x}", dbp_is_direct, db);
         {
             let cmd = &mut cmds[0];
 
             if id <= 0x7F {
-                i3c_debug!(self.logger, "do_ccc: broadcast CCC");
+                // -------- Broadcast CCC --------
                 is_broadcast = true;
 
                 if data_len > 0 {
@@ -2089,14 +1994,22 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                         cmd.tx_len = data_len as u32;
                     }
                 }
-                i3c_debug!(self.logger,
-                    "do_ccc: broadcast CCC, tx_len={}", cmd.tx_len);
             } else {
+                let tgt_addr = match payload.targets.as_ref().and_then(|ts| ts.first()).map(|t| t.addr) {
+                    Some(a) => a,
+                    None => return -21, // EINVAL
+                };
                 // -------- Direct CCC --------
-                i3c_debug!(self.logger, "do_ccc: direct CCC");
+                let pos_ops = config.attached.pos_of_addr(tgt_addr);
+                i3c_debug!(self.logger, "do_ccc: tgt_addr=0x{:02x}, pos_ops={:?}", tgt_addr, pos_ops);
+                pos = match pos_ops {
+                    Some(p) => p,
+                    None => return -22, // EINVAL
+                };
+                i3c_debug!(self.logger, "do_ccc: tgt_addr=0x{:02x}, pos={}", tgt_addr, pos);
                 let tp = match payload.targets.as_deref_mut().and_then(|ts| ts.first_mut()) {
                     Some(tp) => tp,
-                    None => return -22,
+                    None => return -23,
                 };
 
                 rnw = tp.rnw;
@@ -2115,18 +2028,9 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                     cmd.tx_len = len as u32;
                     tp.num_xfer = len;
                 }
-
-                let addr = tp.addr;
-                pos = match self.get_addr_pos(config, addr) {
-                    Some(p) => p,
-                    None => return -22,
-                };
             }
         }
 
-        i3c_debug!(self.logger,
-            "do_ccc: is_broadcast={}, pos={}, rnw={}, dbp_is_direct={}, db=0x{:02x}",
-            is_broadcast, pos, rnw, dbp_is_direct, db);
         let cmd = &mut cmds[0];
         cmd.cmd_hi = field_prep(COMMAND_PORT_ATTR, COMMAND_ATTR_XFER_ARG as u32);
 
@@ -2158,8 +2062,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         self.start_xfer(config, &mut xfer);
 
         let mut delay = DummyDelay {};
-        if !xfer.done.wait_for_us(1000_000, &mut delay) {
-            i3c_debug!(self.logger, "do_ccc: xfer timeout");
+        if !xfer.done.wait_for_us(1000_000_000, &mut delay) {
             self.enter_halt(true, config);
             self.reset_ctrl(RESET_CTRL_XFER_QUEUES);
             self.exit_halt(config);
@@ -2167,9 +2070,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             // return -1;
         }
 
-        i3c_debug!(self.logger, "do_ccc: xfer done");
         let ret = xfer.ret;
-        i3c_debug!(self.logger, "do_ccc: ret={}", ret);
         if ret == RESPONSE_ERROR_IBA_NACK as i32 {
             return 0;
         }
@@ -2187,16 +2088,16 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         ret
     }
 
-    fn do_entdaa(&mut self, config: &mut I3cConfig, index: u32) -> i32 {
-        i3c_debug!(self.logger, "do_entdaa: index={}", index);
+    fn do_entdaa(&mut self, config: &mut I3cConfig, pos: u32) -> i32 {
+        i3c_debug!(self.logger, "do_entdaa: pos={}", pos);
         let cmd = I3cCmd {
             cmd_lo: field_prep(COMMAND_PORT_ATTR,        COMMAND_ATTR_ADDR_ASSGN_CMD as u32)
                 | field_prep(COMMAND_PORT_CMD,         I3C_CCC_ENTDAA as u32)
                 | field_prep(COMMAND_PORT_DEV_COUNT,   1)
-                | field_prep(COMMAND_PORT_DEV_INDEX,   index as u32)
+                | field_prep(COMMAND_PORT_DEV_INDEX,   pos as u32)
                 | COMMAND_PORT_ROC
                 | COMMAND_PORT_TOC,
-                cmd_hi: field_prep(COMMAND_PORT_ATTR, COMMAND_ATTR_XFER_ARG as u32),
+            cmd_hi: field_prep(COMMAND_PORT_ATTR, COMMAND_ATTR_XFER_ARG as u32),
                 tx: None,
                 rx: None,
                 tx_len: 0,
@@ -2204,6 +2105,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                 ret: 0,
         };
 
+        i3c_debug!(self.logger, "do_entdaa: cmd_lo=0x{:08x}, cmd_hi=0x{:08x}", cmd.cmd_lo, cmd.cmd_hi);
         let mut cmds = [cmd];
         let mut xfer = I3cXfer::new(&mut cmds[..]);
         xfer.ret = -1;
@@ -2212,7 +2114,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
         let mut delay = DummyDelay {};
 
-        if !xfer.done.wait_for_us(10_000, &mut delay) {
+        if !xfer.done.wait_for_us(1000_000_000, &mut delay) {
             self.enter_halt(true, config);
             self.reset_ctrl(RESET_CTRL_XFER_QUEUES);
             self.exit_halt(config);
@@ -2220,6 +2122,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             return -1;
         }
 
+        i3c_debug!(self.logger, "do_entdaa: xfer done");
         xfer.ret
     }
 
@@ -2234,136 +2137,120 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         // todo
     }
 
-    fn do_daa(&mut self, config: &mut I3cConfig) -> i32 {
-        i3c_debug!(self.logger, "do_daa");
-        let mut need_da = config.need_da;
-        if need_da == 0 {
-            i3c_debug!(self.logger, "do_daa: no need_da");
-            return 0;
+    fn do_daa(
+        cfg: &mut I3cConfig,
+        ccc: &mut impl CccOps,
+        pos: u8,
+        desired_da: u8,
+        enable_ibi_after: bool,
+        conflict: OnConflict,
+    ) -> Result<u8, DaaError> {
+
+        let da_tmp = ccc.entdaa_for_pos(pos)?;
+
+        let (pid, bcr, dcr) = ccc.getpid_bcr_dcr(da_tmp)?;
+
+        let dev_idx = match cfg.attached.devices.iter().position(|d| d.pid == Some(pid)) {
+            Some(i) => i,
+            None => {
+                let dev = DeviceEntry {
+                    kind: DevKind::I3c,
+                    pid: Some(pid),
+                    static_addr: 0,
+                    dyn_addr: da_tmp,
+                    desired_da,
+                    bcr,
+                    dcr,
+                    maxrd: 0,
+                    maxwr: 0,
+                    mrl: 0,
+                    mwl: 0,
+                    max_ibi: 0,
+                    ibi_en: false,
+                    pos: Some(pos),
+                };
+                cfg.attached.attach(dev).map_err(|_| DaaError::Internal)?
+            }
+        };
+
+        cfg.attached.map_pos(pos, dev_idx as u8);
+        if !cfg.addrbook.in_use[da_tmp as usize] {
+            cfg.addrbook.mark_use(da_tmp, true);
         }
 
-        let maxdevs = config.maxdevs as usize;
-        let mut pos: usize = 0;
+        let want = {
+            let e = &mut cfg.attached.devices[dev_idx];
 
-        while need_da != 0 {
-            i3c_debug!(self.logger,
-                "do_daa: need_da=0x{:08x}, pos={}", need_da, pos);
-            if (need_da & bit(pos as u32)) == 0 {
-                pos = (pos + 1) % maxdevs;
-                continue;
+            if e.dyn_addr != 0 && e.dyn_addr != da_tmp {
+                cfg.addrbook.mark_use(e.dyn_addr, false);
             }
+            e.dyn_addr = da_tmp;
+            e.bcr = bcr;
+            e.dcr = dcr;
+            e.pos = Some(pos);
 
-            let addr = config.addrs[pos];
+            if desired_da != 0 { desired_da } else { e.desired_da }
+        };
 
-            let alive = {
-                self.ccc_do_getstatus_fmt1(config, addr).is_ok()
-            };
-            if alive {
-                need_da &= !bit(pos as u32);
-                pos = (pos + 1) % maxdevs;
-                continue;
-            }
-
-            let entdaa_ret = self.do_entdaa(config, pos as u32);
-            if entdaa_ret != 0 {
-                if entdaa_ret == RESPONSE_ERROR_IBA_NACK as i32 || entdaa_ret == -1 {
-                    break;
-                }
-                pos = (pos + 1) % maxdevs;
-                continue;
-            }
-
-            let pid = {
-                let mut pid_buf = [0u8; 6];
-                let mut tgt_pl = CccTargetPayload {
-                    addr,
-                    rnw: true,
-                    data: Some(&mut pid_buf[..]),
-                    num_xfer: 0,
-                };
-                let mut payload = CccPayload {
-                    ccc: Some(Ccc { id: I3C_CCC_GETPID, data: None, num_xfer: 0 }),
-                    targets: Some(core::slice::from_mut(&mut tgt_pl)),
-                };
-                let _ = self.do_ccc(config, &mut payload);
-                Self::bytes_to_pid(&pid_buf)
-            };
-
-            let dev_id = I3cDeviceId::new(pid);
-
-            if let Some(idx) = config.devs.find_index_by_pid(dev_id) {
-                {
-                    let t = &mut config.devs.i3c_devices[idx];
-                    i3c_debug!(self.logger,
-                        "Device {:012x} DA {:02x} assigned (was {:02x})",
-                        pid, addr, t.dynamic_addr);
-                    t.dynamic_addr = addr;
-                }
-
-                let (expected_da, expected_pos) = {
-                    let t = &config.devs.i3c_devices[idx];
-                    match t.i3c_priv_idx {
-                        Some(pidx) => {
-                            let pr = config.privs[pidx as usize];
-                            (pr.addr, pr.pos)
-                        }
-                        None => {
-                            need_da &= !bit(pos as u32);
-                            pos = (pos + 1) % maxdevs;
-                            continue;
-                        }
-                    }
-                };
-
-                if addr != expected_da {
-                    config.devs.addr_slots.set_status(expected_da, I3cAddrSlotStatus::Free);
-
-                    let set_ret = {
-                        self.ccc_do_setnewda(config, addr, expected_da)
-                    };
-
-                    if set_ret == 0 {
-                        config.devs.addr_slots.set_status(expected_da, I3cAddrSlotStatus::I3cDev);
-                        need_da &= !bit(expected_pos as u32);
-                        need_da |= bit(pos as u32);
-
-                        {
-                            let t = &mut config.devs.i3c_devices[idx];
-                            t.dynamic_addr = expected_da;
-                        }
-
-                        i3c_debug!(self.logger,
-                            "Device {:012x} new DA {:02x} assigned (was {:02x})",
-                            pid, expected_da, addr);
-                    } else {
-                        i3c_debug!(self.logger,
-                            "SETNEWDA failed: expect {:02x} for {:012x}",
-                            expected_da, pid);
-                    }
-                } else {
-                    need_da &= !bit(pos as u32);
-                }
-
-                let final_da = {
-                    let t = &config.devs.i3c_devices[idx];
-                    t.dynamic_addr
-                };
-                let bcr = self.ccc_do_getbcr(config, final_da);
-                if let Ok(b) = bcr {
-                    let t = &mut config.devs.i3c_devices[idx];
-                    t.bcr = b;
-                }
-                self.ibi_enable(config, idx);
+        if want != 0 && want != da_tmp {
+            if cfg.addrbook.is_free(want) {
+                ccc.setnewda(da_tmp, want).map_err(|_| DaaError::SetNewDaFailed)?;
+                cfg.addrbook.mark_use(da_tmp, false);
+                cfg.addrbook.mark_use(want, true);
+                cfg.attached.devices[dev_idx].dyn_addr = want;
             } else {
-                i3c_debug!(self.logger, "Unsolicited device with PID {:012x}", pid);
-                self.handle_unsolicited(config);
-                continue;
-            }
+                match conflict {
+                    OnConflict::KeepTemp => {}
 
-            pos = (pos + 1) % maxdevs;
+                    OnConflict::PickNextFree => {
+                        if let Some(next) = cfg.addrbook.alloc_from(8) {
+                            ccc.setnewda(da_tmp, next).map_err(|_| DaaError::SetNewDaFailed)?;
+                            cfg.addrbook.mark_use(da_tmp, false);
+                            cfg.attached.devices[dev_idx].dyn_addr = next;
+                        }
+                    }
+
+                    OnConflict::TrySwapWithDesired => {
+                        if let Some(occ_idx) = cfg.attached.devices
+                            .iter()
+                                .position(|d| d.dyn_addr == want)
+                        {
+                            if let Some(temp) = cfg.addrbook.alloc_from(8) {
+                                ccc.setnewda(want, temp).map_err(|_| DaaError::SetNewDaFailed)?;
+                                cfg.addrbook.mark_use(want, false);
+                                cfg.attached.devices[occ_idx].dyn_addr = temp;
+
+                                if let Err(_) = ccc.setnewda(da_tmp, want) {
+                                    let _ = ccc.setnewda(temp, want);
+                                    cfg.addrbook.mark_use(want, true);
+                                    cfg.addrbook.mark_use(temp, false);
+                                } else {
+                                    cfg.addrbook.mark_use(da_tmp, false);
+                                    cfg.addrbook.mark_use(want, true);
+                                    cfg.attached.devices[dev_idx].dyn_addr = want;
+
+                                    if let Err(_) = ccc.setnewda(temp, da_tmp) {
+                                    } else {
+                                        cfg.addrbook.mark_use(temp, false);
+                                        cfg.addrbook.mark_use(da_tmp, true);
+                                        cfg.attached.devices[occ_idx].dyn_addr = da_tmp;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        0
+        let final_da = cfg.attached.devices[dev_idx].dyn_addr;
+        if enable_ibi_after {
+            if ccc.enec_intr(final_da).is_ok() {
+                cfg.attached.devices[dev_idx].ibi_en = true;
+            }
+        }
+
+        Ok(final_da)
     }
 
     fn priv_xfer_build_cmds<'a>(
@@ -2433,31 +2320,9 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         0
     }
 
-    fn priv_xfer(&mut self, config: &mut I3cConfig, dev_idx: usize, msgs: &mut [I3cMsg],) -> i32 {
-        if msgs.is_empty() {
-            return 0;
-        }
-        if dev_idx >= config.devs.i3c_devices.len() {
-            return -22; // -EINVAL
-        }
-
-        let (dyn_addr, priv_idx_opt) = {
-            let d = &config.devs.i3c_devices[dev_idx];
-            (d.dynamic_addr, d.i3c_priv_idx)
-        };
-
-        if dyn_addr == 0 {
-            return -22;
-        }
-
-        let pos: u8 = match priv_idx_opt {
-            Some(i) => config.privs[i as usize].pos,
-            None => return -22, // -EINVAL
-        };
-
-        if msgs.len() > MAX_CMDS {
-            return -22; // -EINVAL
-        }
+    fn priv_xfer(&mut self, config: &mut I3cConfig, pid: u64, msgs: &mut [I3cMsg],) -> Result<(), I3cDrvError> {
+        let pos_opt = config.attached.pos_of_pid(pid);
+        let pos: u8 = pos_opt.ok_or(I3cDrvError::NoDatPos)?;
 
         let mut cmds: heapless::Vec<I3cCmd, MAX_CMDS> = heapless::Vec::new();
         for _ in 0..msgs.len() {
@@ -2474,19 +2339,19 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
         let ret = self.priv_xfer_build_cmds(cmds.as_mut_slice(), msgs, pos);
         if ret != 0 {
-            return ret;
+            I3cDrvError::InvalidArgs;
         }
 
         let mut xfer = I3cXfer::new(cmds.as_mut_slice());
         self.start_xfer(config, &mut xfer);
 
         let mut delay = DummyDelay {};
-        if !xfer.done.wait_for_us(10_000, &mut delay) {
+        if !xfer.done.wait_for_us(1000_000_000, &mut delay) {
             self.enter_halt(true, config);
             self.reset_ctrl(RESET_CTRL_XFER_QUEUES);
             self.exit_halt(config);
             let _ = config.curr_xfer.swap(core::ptr::null_mut(), Ordering::AcqRel);
-            return -1;
+            I3cDrvError::Timeout;
         }
 
         for (i, m) in msgs.iter_mut().enumerate() {
@@ -2495,7 +2360,8 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             }
         }
 
-        xfer.ret
+        Ok(())
+        // xfer.ret
     }
 
     fn target_tx_write(&mut self, buf: &[u8]) {
@@ -2520,10 +2386,11 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn handle_ibi_sir(&mut self, config: &mut I3cConfig, addr: u8, len: usize) {
-        i3c_debug!(self.logger, "handle_ibi_sir: addr=0x{:02x}, len={}", addr, len);
-        if self.get_addr_pos(config, addr).is_none() {
+        i3c_debug!(self.logger, "handle_ibi_sir: addr=0x{:02x}", addr);
+        let pos = config.attached.pos_of_addr(addr);
+        if pos.is_none() {
+            i3c_debug!(self.logger, "handle_ibi_sir: no such addr in attached devices");
             self.drain_fifo(|| self.i3c.i3cd018().read().bits(), len);
-            return;
         }
 
         let mut buf: [u8; 2] = [0u8; 2];
@@ -2544,15 +2411,20 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         }
 
         for _ in 0..nibis {
-            let ibi_id = self.i3c.i3cd018().read().ibiidentifier().bits();
-            let ibi_data_len = self.i3c.i3cd018().read().in_band_intdata_len().bits() as usize;
+            // i3c_debug!(self.logger, "i3cd018 (IBI Queue status) = {:#x}", self.i3c.i3cd018().read().bits());
+            let reg = self.i3c.i3cd018().read().bits();
+
+            let ibi_id = field_get(reg, IBIQ_STATUS_IBI_ID, IBIQ_STATUS_IBI_ID_SHIFT);
+            let ibi_data_len = field_get(reg, IBIQ_STATUS_IBI_DATA_LEN, IBIQ_STATUS_IBI_DATA_LEN_SHIFT) as usize;
+            // let ibi_id = self.i3c.i3cd018().read().ibiidentifier().bits();
+            // let ibi_data_len = self.i3c.i3cd018().read().in_band_intdata_len().bits() as usize;
             let ibi_addr = (ibi_id >> 1) & 0x7F;
             let rnw = (ibi_id & 1) != 0;
             i3c_debug!(self.logger,
                 "IBI: addr=0x{:02x}, rnw={}, len={}", ibi_addr, rnw, ibi_data_len);
             if ibi_addr != 2 && rnw {
                 // sirq
-                self.handle_ibi_sir(config, ibi_addr, ibi_data_len);
+                self.handle_ibi_sir(config, ibi_addr as u8, ibi_data_len);
             } else if ibi_addr == 2 && !rnw {
                 // hot-join
                 let bus = I3C::BUS_NUM as usize;
@@ -2567,13 +2439,14 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn i3c_aspeed_isr(&mut self, config: &mut I3cConfig) {
-        i3c_debug!(self.logger, "!!!!!!!!!!i3c_aspeed_isr");
+        i3c_debug!(self.logger, "[ISR]");
         let status = self.i3c.i3cd03c().read().bits();
         i3c_debug!(self.logger, "Interrupt status: 0x{:08x}", status);
         if status == 0 {
             return;
         }
 
+        // self.disable_irq();
         if config.is_secondary {
             i3c_debug!(self.logger, "Secondary controller interrupt");
             if status & INTR_DYN_ADDR_ASSGN_STAT != 0 {
@@ -2584,10 +2457,12 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             }
 
             if (status & INTR_RESP_READY_STAT) != 0 {
+                i3c_debug!(self.logger, "Response ready");
                 self.target_handle_response_ready(config);
             }
 
             if (status & INTR_CCC_UPDATED_STAT) != 0 {
+                i3c_debug!(self.logger, "CCC updated");
                 self.target_handle_ccc_update(config);
             }
         } else {
@@ -2607,6 +2482,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         }
 
         self.i3c.i3cd03c().write(|w| unsafe { w.bits(status) } );
+        // self.enable_irq();
     }
 
     fn ccc_do_events_all_set(&mut self, config: &mut I3cConfig, enable: bool, events: u8) -> i32 {
@@ -2726,46 +2602,25 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     ) -> i32 {
         if curr_da == 0 || new_da == 0 { return -22; }
 
-        let idx = match config.devs.find_index_by_dyn(curr_da) {
-            Some(i) => i,
-            None => return -22,
-        };
+        let pos = config.attached.pos_of_addr(curr_da);
+        i3c_debug!(self.logger, "ccc_do_setnewda: curr_da=0x{:02x}, new_da=0x{:02x}, pos={:?}", curr_da, new_da, pos);
+        if pos.is_none() {
+            return -22;
+        }
 
-        let (old_da, new_slot_free, pos_opt) = {
-            let t = &config.devs.i3c_devices[idx];
-            let status = config.devs.addr_slots.status(new_da);
-            (t.dynamic_addr, status == I3cAddrSlotStatus::Free, t.i3c_priv_idx)
-        };
-
-        if new_da != old_da && !new_slot_free { return -22; }
-
+        if !config.addrbook.is_free(new_da) {
+            return -22; // -EINVAL
+        }
         let mut new_dyn_addr = (new_da & 0x7F) << 1;
-        let tgt = CccTargetPayload { addr: old_da, rnw: false, data: Some(core::slice::from_mut(&mut new_dyn_addr)), num_xfer: 0 };
+        let tgt = CccTargetPayload { addr: curr_da, rnw: false, data: Some(core::slice::from_mut(&mut new_dyn_addr)), num_xfer: 0 };
         let mut tgts = [tgt];
         let ccc = Ccc { id: I3C_CCC_SETNEWDA, data: None, num_xfer: 0 };
         let mut payload = CccPayload { ccc: Some(ccc), targets: Some(&mut tgts[..]) };
 
         let ret = self.do_ccc(config, &mut payload);
-        if ret != 0 { return ret; }
-
-        {
-            let t = &mut config.devs.i3c_devices[idx];
-            let prev = t.dynamic_addr;
-            if prev != new_da {
-                config.devs.addr_slots.set_status(prev, I3cAddrSlotStatus::Free);
-                config.devs.addr_slots.set_status(new_da, I3cAddrSlotStatus::I3cDev);
-            }
-            t.dynamic_addr = new_da;
-
-            if let Some(pidx) = pos_opt {
-                let pos = config.privs[pidx as usize].pos as usize;
-                config.addrs[pos]        = new_da;
-                config.privs[pos].addr   = new_da;
-            }
-        }
-
-        0
+        ret
     }
+
     fn ccc_do_getstatus_fmt1(&mut self, config: &mut I3cConfig, da: u8) -> Result<u16, i32> {
         match self.ccc_do_getstatus(config, da, GetStatusFormat::Fmt1) {
             Ok(GetStatusResp::Fmt1 { status }) => Ok(status),
@@ -2818,37 +2673,38 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn ccc_do_setdasa(&mut self, config: &mut I3cConfig, dev_idx: usize) -> i32 {
-        if dev_idx >= config.devs.i3c_devices.len() {
-            return -22; // -EINVAL
-        }
-        let desc = &config.devs.i3c_devices[dev_idx];
-
-        if desc.static_addr == 0 || desc.dynamic_addr != 0 {
-            return -22; // -EINVAL
-        }
-
-        let da7: u8 = if desc.init_dyn_addr != 0 { desc.init_dyn_addr } else { desc.static_addr } & 0x7F;
-
-        if desc.init_dyn_addr != 0 && desc.init_dyn_addr != desc.static_addr {
-            if config.devs.addr_slots.status(da7) != I3cAddrSlotStatus::Free {
-                return -22; // -EINVAL
-            }
-        }
-
-        let mut da8: u8 = (da7 << 1) & 0xFE;
-
-        let mut tgt = CccTargetPayload {
-            addr: desc.static_addr,
-            rnw: false,
-            data: Some(core::slice::from_mut(&mut da8)), // &mut [u8; 1]
-            num_xfer: 0,
-        };
-        let mut payload = CccPayload {
-            ccc: Some(Ccc { id: I3C_CCC_SETDASA, data: None, num_xfer: 0 }),
-            targets: Some(core::slice::from_mut(&mut tgt)),
-        };
-
-        self.do_ccc(config, &mut payload)
+        0
+        // if dev_idx >= config.devs.i3c_devices.len() {
+        //     return -22; // -EINVAL
+        // }
+        // let desc = &config.devs.i3c_devices[dev_idx];
+        //
+        // if desc.static_addr == 0 || desc.dynamic_addr != 0 {
+        //     return -22; // -EINVAL
+        // }
+        //
+        // let da7: u8 = if desc.init_dyn_addr != 0 { desc.init_dyn_addr } else { desc.static_addr } & 0x7F;
+        //
+        // if desc.init_dyn_addr != 0 && desc.init_dyn_addr != desc.static_addr {
+        //     if config.devs.addr_slots.status(da7) != I3cAddrSlotStatus::Free {
+        //         return -22; // -EINVAL
+        //     }
+        // }
+        //
+        // let mut da8: u8 = (da7 << 1) & 0xFE;
+        //
+        // let mut tgt = CccTargetPayload {
+        //     addr: desc.static_addr,
+        //     rnw: false,
+        //     data: Some(core::slice::from_mut(&mut da8)), // &mut [u8; 1]
+        //     num_xfer: 0,
+        // };
+        // let mut payload = CccPayload {
+        //     ccc: Some(Ccc { id: I3C_CCC_SETDASA, data: None, num_xfer: 0 }),
+        //     targets: Some(core::slice::from_mut(&mut tgt)),
+        // };
+        //
+        // self.do_ccc(config, 0, &mut payload)
     }
 
     fn target_handle_response_ready(&mut self, config: &mut I3cConfig) {
@@ -2923,7 +2779,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
         let mut delay = DummyDelay {};
 
-        if !config.target_ibi_done.wait_for_us(1_000_000, &mut delay) {
+        if !config.target_ibi_done.wait_for_us(1000_000_000, &mut delay) {
             i3c_debug!(self.logger, "SIR timeout! Reset I3C controller");
             self.enter_halt(false, config);
             self.reset_ctrl(RESET_CTRL_QUEUES);
@@ -2931,7 +2787,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             return -5; // -EIO
         }
 
-        if !config.target_data_done.wait_for_us(1_000_000, &mut delay) {
+        if !config.target_data_done.wait_for_us(1_000_000_000, &mut delay) {
             // C: wait master read timeout -> disable/reset/enable queues
             i3c_debug!(self.logger, "wait master read timeout! Reset queues");
             self.i3c_disable(config.is_secondary);
@@ -2944,6 +2800,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn target_handle_ccc_update(&mut self, config: &mut I3cConfig) {
+        i3c_debug!(self.logger, "target_handle_ccc_update");
         let event = self.i3c.i3cd038().read().bits();
         self.i3c.i3cd038().write(|w| unsafe { w.bits(event) });
         let reg = self.i3c.i3cd054().read().cmtfrstatus().bits();
@@ -2951,6 +2808,38 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             self.enter_halt(true, config);
             self.exit_halt(config);
         }
+    }
+
+    fn enable_dev_ibi(&mut self, pos: usize, ibi_has_data_byte: bool) -> i32 {
+        let mut reg = i3c_dat_read!(self, pos as u32);
+        i3c_debug!(self.logger, "dat val before enable ibi: 0x{:08x}", reg);
+        if ibi_has_data_byte {
+            reg |= DEV_ADDR_TABLE_IBI_MDB | DEV_ADDR_TABLE_IBI_PEC;
+        }
+
+        i3c_dat_write!(self, pos as u32, |w| unsafe {
+            w.bits(reg)
+        });
+        i3c_debug!(self.logger, "dat val after enable ibi: 0x{:08x}", i3c_dat_read!(self, pos as u32));
+
+        let mut sir_reject = self.i3c.i3cd030().read().bits();
+        sir_reject &= !bit(pos as u32);
+        self.i3c.i3cd030().write(|w| unsafe { w.bits(sir_reject) });
+
+        self.i3c.i3cd040().modify(|_, w| {
+            w.ibithldstaten().set_bit()
+        });
+
+        self.i3c.i3cd044().modify(|_, w| {
+            w.ibithldsignalen().set_bit()
+        });
+
+        0
+    }
+
+    fn do_dev_entdaa(&mut self, config: &mut I3cConfig, dev_idx: u32) -> i32 {
+        self.do_entdaa(config, dev_idx);
+        0
     }
 }
 

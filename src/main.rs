@@ -54,7 +54,7 @@ unsafe fn pre_init() {
     write_volatile(cache_area_offset as *mut u32, cache_val);
 
     let cache_inval_offset: u32 = 0x7e6e_2a54;
-    let cache_inval_val = 0x8660_0000;
+    let cache_inval_val = 0x81e0_0000;
     write_volatile(cache_inval_offset as *mut u32, cache_inval_val);
 
     // Enable Cache
@@ -218,7 +218,10 @@ fn main() -> ! {
     // #[cfg(feature = "i3c_target")]
     // i3c_test::test_i3c_slave(&mut uart_controller);
     setup_bmc_sequence(&mut uart_controller);
-    i3c_test::test_i3c_master(&mut uart_controller);
+
+    // i3c_test::test_i3c_master(&mut uart_controller);
+    i3c_test::test_i3c_target(&mut uart_controller);
+
     // test_wdt(&mut uart_controller);
     // run_timer_tests(&mut uart_controller);
     //
