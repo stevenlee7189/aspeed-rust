@@ -183,6 +183,7 @@ const IBI_DATA_MAX: usize = 16;
 pub enum IbiWork {
     HotJoin,
     Sirq { addr: u8, len: u8, data: [u8; IBI_DATA_MAX] },
+    TargetDaAssignment,
 }
 
 static mut IBIQ_BUFS: [Queue<IbiWork, IBIQ_DEPTH>; 4] = [
@@ -224,6 +225,15 @@ pub fn i3c_ibi_workq_consumer(bus: usize) -> heapless::spsc::Consumer<'static, I
         }
         b.cons.take().expect("IBI consumer already taken")
     })
+}
+
+fn i3c_ibi_work_enqueue_target_da_assignment(bus: usize) {
+    ensure_ibiq_split(bus);
+    critical_section::with(|cs| {
+        if let Some(p) = IBI_WORKQS[bus].borrow(cs).borrow_mut().prod.as_mut() {
+            let _ = p.enqueue(IbiWork::TargetDaAssignment);
+        }
+    });
 }
 
 #[inline]
@@ -701,7 +711,7 @@ pub struct I3cConfig {
     // Optional: your own “common” higher-level state
     pub common: CommonState,
 
-    pub target_config: Option<&'static mut I3cTargetConfig>,
+    pub target_config: Option<I3cTargetConfig>,
     pub addrbook: AddrBook,
     pub attached: Attached,
 
@@ -781,6 +791,13 @@ pub struct ResetSpec {
 pub struct I3cTargetConfig {
     pub flags: u8,
     pub addr: Option<u8>,
+    pub mdb: u8,
+}
+
+impl I3cTargetConfig {
+    pub const fn new(flags: u8,  addr: Option<u8>, mdb:u8) -> Self {
+        Self { flags, addr, mdb }
+    }
 }
 
 pub trait HardwareInterface {
@@ -1341,7 +1358,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
         if config.is_secondary {
             self.i3c.i3cd004().write(|w| unsafe {
-                w.dev_static_addr().bits(8)
+                w.dev_static_addr().bits(9)
                     .static_addr_valid().set_bit()
             });
         } else {
@@ -1374,7 +1391,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn enable_irq(&mut self) {
-        i3c_debug!(self.logger, "enable irq");
         unsafe {
             match I3C::BUS_NUM {
                 0 => NVIC::unmask(ast1060_pac::Interrupt::i3c),
@@ -1387,7 +1403,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn disable_irq(&mut self) {
-        i3c_debug!(self.logger, "disable irq");
         match I3C::BUS_NUM {
             0 => NVIC::mask(ast1060_pac::Interrupt::i3c),
             1 => NVIC::mask(ast1060_pac::Interrupt::i3c1),
@@ -2416,8 +2431,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
             let ibi_id = field_get(reg, IBIQ_STATUS_IBI_ID, IBIQ_STATUS_IBI_ID_SHIFT);
             let ibi_data_len = field_get(reg, IBIQ_STATUS_IBI_DATA_LEN, IBIQ_STATUS_IBI_DATA_LEN_SHIFT) as usize;
-            // let ibi_id = self.i3c.i3cd018().read().ibiidentifier().bits();
-            // let ibi_data_len = self.i3c.i3cd018().read().in_band_intdata_len().bits() as usize;
             let ibi_addr = (ibi_id >> 1) & 0x7F;
             let rnw = (ibi_id & 1) != 0;
             i3c_debug!(self.logger,
@@ -2439,21 +2452,21 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn i3c_aspeed_isr(&mut self, config: &mut I3cConfig) {
-        i3c_debug!(self.logger, "[ISR]");
+        self.disable_irq();
         let status = self.i3c.i3cd03c().read().bits();
-        i3c_debug!(self.logger, "Interrupt status: 0x{:08x}", status);
+        i3c_debug!(self.logger, "[ISR] 0x{:08x}", status);
         if status == 0 {
+            self.enable_irq();
             return;
         }
 
-        // self.disable_irq();
         if config.is_secondary {
-            i3c_debug!(self.logger, "Secondary controller interrupt");
             if status & INTR_DYN_ADDR_ASSGN_STAT != 0 {
                 let da = self.i3c.i3cd004().read().dev_dynamic_addr().bits();
                 if let Some(tc) = &mut config.target_config {
                     tc.addr = Some(da);
                 }
+                i3c_ibi_work_enqueue_target_da_assignment(I3C::BUS_NUM.into());
             }
 
             if (status & INTR_RESP_READY_STAT) != 0 {
@@ -2462,14 +2475,10 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             }
 
             if (status & INTR_CCC_UPDATED_STAT) != 0 {
-                i3c_debug!(self.logger, "CCC updated");
                 self.target_handle_ccc_update(config);
             }
         } else {
             i3c_debug!(self.logger, "Primary controller interrupt");
-            // if (status & INTR_RESP_READY_STAT) != 0 || (status & INTR_TRANSFER_ERR_STAT) != 0 {
-            //     self.end_xfer(config)
-            // }
             if (status & (INTR_RESP_READY_STAT | INTR_TRANSFER_ERR_STAT | INTR_TRANSFER_ABORT_STAT)) != 0 {
                 i3c_debug!(self.logger, "Transfer complete/err/abort");
                 self.end_xfer(config);
@@ -2482,7 +2491,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         }
 
         self.i3c.i3cd03c().write(|w| unsafe { w.bits(status) } );
-        // self.enable_irq();
+        self.enable_irq();
     }
 
     fn ccc_do_events_all_set(&mut self, config: &mut I3cConfig, enable: bool, events: u8) -> i32 {
@@ -2716,6 +2725,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             let tid    = field_get(resp, RESPONSE_PORT_TID_MASK,        RESPONSE_PORT_TID_SHIFT)   as usize;
             let rx_len = field_get(resp, RESPONSE_PORT_DATA_LEN_MASK,   RESPONSE_PORT_DATA_LEN_SHIFT) as usize;
             let err    = field_get(resp, RESPONSE_PORT_ERR_STATUS_MASK, RESPONSE_PORT_ERR_STATUS_SHIFT) as i32;
+            i3c_debug!(self.logger, "Response: tid={}, rx_len={}, err={}", tid, rx_len, err);
 
             if err != 0 {
                 // todo: reset controller on error
@@ -2725,12 +2735,12 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                 continue;
             }
 
-            if rx_len == 0 {
-                continue;
+            if rx_len != 0 {
+                let mut buf: [u8; 256] = [0u8; 256];
+                self.rd_ibi_fifo(&mut buf[..rx_len]);
+                i3c_debug!(self.logger, "Response data: {:02x?}", &buf[..rx_len]);
             }
 
-            let mut buf: [u8; 256] = [0u8; 256];
-            self.rd_ibi_fifo(&mut buf[..rx_len]);
             if tid == Tid::TargetIbi as usize {
                 // k_sem_give(&data->target_ibi_sem);
                 config.target_ibi_done.complete();
@@ -2800,9 +2810,9 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn target_handle_ccc_update(&mut self, config: &mut I3cConfig) {
-        i3c_debug!(self.logger, "target_handle_ccc_update");
         let event = self.i3c.i3cd038().read().bits();
         self.i3c.i3cd038().write(|w| unsafe { w.bits(event) });
+        i3c_debug!(self.logger, "CCC update event: 0x{:08x}", event);
         let reg = self.i3c.i3cd054().read().cmtfrstatus().bits();
         if reg == CM_TFR_STS_TARGET_HALT {
             self.enter_halt(true, config);

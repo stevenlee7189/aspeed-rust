@@ -12,6 +12,12 @@ use crate::i3c::ast1060_i3c::I3cConfig;
 use crate::i3c::ast1060_i3c::HardwareInterface;
 use crate::i3c::ast1060_i3c::i3c_ibi_workq_consumer;
 use crate::i3c::ast1060_i3c::IbiWork;
+use embedded_hal::delay::DelayNs;
+
+// I3cTarget
+use crate::i3c::ast1060_i3c::I3cIbi;
+use crate::i3c::ast1060_i3c::I3cIbiType;
+use crate::i3c::ast1060_i3c::I3cTargetConfig;
 
 pub fn test_i3c_master(uart: &mut UartController<'_>) {
     let peripherals = unsafe { Peripherals::steal() };
@@ -125,9 +131,23 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
                     }
                     writeln!(uart, "\r").unwrap();
                 }
+                IbiWork::TargetDaAssignment => {
+                    writeln!(uart, "[IBI] TargetDaAssignment\r").unwrap();
+                }
             }
         }
     }
+}
+
+fn crc8_ccitt(mut crc: u8, data: &[u8]) -> u8 {
+    for &b in data {
+        let mut x = crc ^ b;
+        for _ in 0..8 {
+            x = if (x & 0x80) != 0 { (x << 1) ^ 0x07 } else { x << 1 };
+        }
+        crc = x;
+    }
+    crc
 }
 
 pub fn test_i3c_target(uart: &mut UartController<'_>) {
@@ -158,16 +178,19 @@ pub fn test_i3c_target(uart: &mut UartController<'_>) {
         c.is_secondary = true;
         c.i2c_scl_hz = 1000_000;
         c.i3c_scl_hz = 12_500_000;
-        c.i3c_pp_scl_hi_period_ns = 250;
-        c.i3c_pp_scl_lo_period_ns = 250;
+        c.i3c_pp_scl_hi_period_ns = 36;
+        c.i3c_pp_scl_lo_period_ns = 36;
         c.i3c_od_scl_hi_period_ns = 0;
         c.i3c_od_scl_lo_period_ns = 0;
         c.sda_tx_hold_ns = 20;
         c.dcr = 0xcc;
-
+        c.target_config = Some(I3cTargetConfig::new(0, Some(0), 0xae));
     }
     let mut ibi_cons = i3c_ibi_workq_consumer(ctrl.hw.bus_num() as usize);
     ctrl.init();
+    let dyn_addr = 8;
+    let dev_idx = 0;
+    ctrl.hw.attach_i3c_dev(dev_idx, dyn_addr);
     unsafe {
         let reg_base = 0x7e7a_4000 as *mut u32;
         // [7e7a4000] 80000200 00008009 000f40bb 00000000
@@ -191,10 +214,40 @@ pub fn test_i3c_target(uart: &mut UartController<'_>) {
         if let Some(work) = ibi_cons.dequeue() {
             match work {
                 IbiWork::HotJoin => {
+                    // do nothing in target mode
                     writeln!(uart, "[IBI] hotjoin\r").unwrap();
                 }
-                IbiWork::Sirq { addr, len, data } => {
+                IbiWork::Sirq { addr, len, data: _ } => {
+                    // do nothing in target mode
                     writeln!(uart, "[IBI] SIRQ from 0x{:02x}, len {}\r", addr, len).unwrap();
+                }
+                IbiWork::TargetDaAssignment => {
+
+                    let mut delay = DummyDelay {};
+                    delay.delay_ns(4_000_000_000);
+                    writeln!(uart, "[IBI] TargetDaAssignment\r").unwrap();
+                    writeln!(uart, "  allow SIR by SW\r").unwrap();
+                    ctrl.config.sir_allowed_by_sw = true;
+                    let da = ctrl.config.target_config.as_ref().unwrap().addr;
+                    let mdb = ctrl.config.target_config.as_ref().unwrap().mdb;
+                    let addr_rnw;
+                    if let Some(da_val) = da {
+                        addr_rnw = (da_val << 1) | 0x1;
+                    } else {
+                        writeln!(uart, "  no dyn addr\r").unwrap();
+                        return;
+                    }
+                    let mut pec = crc8_ccitt(0, &[addr_rnw]);
+                    pec = crc8_ccitt(pec, &[mdb]);
+                    writeln!(uart, "  assigned dyn addr 0x{:02x}, mdb 0x{:02x}, pec 0x{:02x}\r", da.unwrap(), mdb, pec).unwrap();
+
+                    let payload = [mdb, pec];
+                    let mut data_to_read = [0u8; 16];
+                    for (i, b) in data_to_read.iter_mut().enumerate() { *b = i as u8; }
+
+                    let mut ibi = I3cIbi { ibi_type: I3cIbiType::TargetIntr, payload: Some(&payload) };
+                    let rc = ctrl.hw.target_pending_read_notify(&mut ctrl.config, &data_to_read, &mut ibi);
+                    writeln!(uart, "  pending_read_notify rc {}\r", rc).unwrap();
                 }
             }
         }
