@@ -6,18 +6,39 @@ use crate::common::{DummyDelay, NoOpLogger, UartLogger};
 use crate::pinctrl;
 use ast1060_pac::Peripherals;
 use embedded_io::Write;
-use crate::i3c::ast1060_i3c::{self, i3c, Ast1060I3c};
-use crate::i3c::ast1060_i3c::I3cController;
-use crate::i3c::ast1060_i3c::I3cConfig;
+use crate::i3c::i3c_controller::I3cController;
+use crate::i3c::i3c_config::I3cConfig;
+use crate::i3c::i3c_config::I3cTargetConfig;
+use crate::i3c::ibi_workq::{IbiWork, i3c_ibi_workq_consumer};
+use crate::i3c::ast1060_i3c::{Ast1060I3c, I3C_MSG_READ, I3C_MSG_STOP};
 use crate::i3c::ast1060_i3c::HardwareInterface;
-use crate::i3c::ast1060_i3c::i3c_ibi_workq_consumer;
-use crate::i3c::ast1060_i3c::IbiWork;
+use crate::i3c::ast1060_i3c::I3cMsg;
+use crate::i3c::ccc;
 use embedded_hal::delay::DelayNs;
 
 // I3cTarget
 use crate::i3c::ast1060_i3c::I3cIbi;
 use crate::i3c::ast1060_i3c::I3cIbiType;
-use crate::i3c::ast1060_i3c::I3cTargetConfig;
+
+pub fn dump_i3c_controller_registers(uart: &mut UartController<'_>, base: u32) {
+    // [7e7a4000] 80000200 00008009 000f40bb 00000000
+    // [7e7a4010] 00000000 00000000 00000000 001f0000
+    // [7e7a4020] 01010001 00000000 00000000 ffffffff
+    unsafe {
+        let reg_base = base as *mut u32;
+        writeln!(uart, "rust I3C reg dump:\r").unwrap();
+        for i in 0..0xc0 {
+            let v = read_volatile(reg_base.add(i));
+            if i % 4 == 0 {
+                write!(uart, "[{:08x}]", base + i as u32 * 4).unwrap();
+            }
+            write!(uart, " {:08x}", v).unwrap();
+            if i % 4 == 3 {
+                writeln!(uart, "\r").unwrap();
+            }
+        }
+    }
+}
 
 pub fn test_i3c_master(uart: &mut UartController<'_>) {
     let peripherals = unsafe { Peripherals::steal() };
@@ -57,15 +78,12 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
     let mut ibi_cons = i3c_ibi_workq_consumer(ctrl.hw.bus_num() as usize);
     let known_pid = 0x07ec_0503_1000u64;
     let ctrl_dev_slot0 = 0;
-    // let ctrl_dev_slot1 = 1;
-    // let dyn_addr = 8;
     ctrl.init();
 
-    // ctrl.attach_i3c_dev(known_pid, dyn_addr, ctrl_dev_slot0).unwrap();
     let dyn_addr = match ctrl.config.addrbook.alloc_from(8) {
         Some(da) => {
             ctrl.attach_i3c_dev(known_pid, da, ctrl_dev_slot0).unwrap();
-            writeln!(uart, "~~~~pre-attached dev at slot 0, dyn addr {}\r", da).unwrap();
+            writeln!(uart, "Pre-attached dev at slot 0, dyn addr {}\r", da).unwrap();
             da
         }
         None => {
@@ -74,6 +92,7 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
         }
     };
 
+    // dump_i3c_controller_registers(uart, 0x7e7a_4000);
     writeln!(uart, "ctrl dev at slot 0, dyn addr {}\r", dyn_addr).unwrap();
     loop {
         if let Some(work) = ibi_cons.dequeue() {
@@ -81,8 +100,7 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
                 IbiWork::HotJoin => {
                     writeln!(uart, "[IBI] hotjoin\r").unwrap();
                     let _ = ctrl.hw.do_entdaa(&mut ctrl.config, ctrl_dev_slot0.try_into().unwrap());
-                    writeln!(uart, "  entdaa done\r").unwrap();
-                    let pid = ctrl.hw.ccc_do_getpid(&mut ctrl.config, dyn_addr);
+                    let pid = ccc::ccc_getpid(&mut ctrl.hw, &mut ctrl.config, dyn_addr);
                     match pid {
                         Ok(pid) => {
                             writeln!(uart, "  dev pid 0x{:x}\r", pid).unwrap();
@@ -91,7 +109,7 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
                             writeln!(uart, "  getpid err {}\r", e).unwrap();
                         }
                     }
-                    let bcr = ctrl.hw.ccc_do_getbcr(&mut ctrl.config, dyn_addr);
+                    let bcr = ccc::ccc_getbcr(&mut ctrl.hw, &mut ctrl.config, dyn_addr);
                     match bcr {
                         Ok(bcr) => {
                             writeln!(uart, "  dev bcr 0x{:02x}\r", bcr).unwrap();
@@ -113,12 +131,12 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
                     writeln!(uart, "\r").unwrap();
                     let mut rx_buf = [0u8; 128];
                     let mut msgs = [
-                        ast1060_i3c::I3cMsg {
+                        I3cMsg {
 
                             buf: Some(&mut rx_buf[..]),
                             actual_len: 128,
                             num_xfer: 0,
-                            flags: ast1060_i3c::I3C_MSG_READ | ast1060_i3c::I3C_MSG_STOP,
+                            flags: I3C_MSG_READ | I3C_MSG_STOP,
                             hdr_mode: 0,
                             hdr_cmd_mode: 0,
                         }
@@ -191,25 +209,8 @@ pub fn test_i3c_target(uart: &mut UartController<'_>) {
     let dyn_addr = 8;
     let dev_idx = 0;
     ctrl.hw.attach_i3c_dev(dev_idx, dyn_addr);
-    unsafe {
-        let reg_base = 0x7e7a_4000 as *mut u32;
-        // [7e7a4000] 80000200 00008009 000f40bb 00000000
-        // [7e7a4010] 00000000 00000000 00000000 001f0000
-        // [7e7a4020] 01010001 00000000 00000000 ffffffff
-        let mut preg = 0x7e7a_4000;
-        writeln!(uart, "rust I3C2 reg dump:\r").unwrap();
-        for i in 0..0xc0 {
-            let v = read_volatile(reg_base.add(i));
-            if i % 4 == 0 {
-                write!(uart, "[{:08x}]", preg);
-                preg += 0x10;
-            }
-            write!(uart, " {:08x}", v).unwrap();
-            if i % 4 == 3 {
-                writeln!(uart, "\r").unwrap();
-            }
-        }
-    }
+    // Dump I3C2 registers
+    dump_i3c_controller_registers(uart, 0x7e7a_4000);
     loop {
         if let Some(work) = ibi_cons.dequeue() {
             match work {

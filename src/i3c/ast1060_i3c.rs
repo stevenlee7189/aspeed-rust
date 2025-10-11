@@ -2,15 +2,15 @@
 
 use crate::common::{DummyDelay, Logger};
 use core::marker::PhantomData;
-// use core::fmt::Write;
-use core::sync::atomic::{AtomicPtr, AtomicBool, Ordering};
+use core::sync::atomic::Ordering;
 use core::cell::RefCell;
 use embedded_hal::delay::DelayNs;
-use heapless::Vec;
-use heapless::spsc::Queue;
 use cortex_m::peripheral::NVIC;
 use critical_section::Mutex;
 use core::ptr::read_volatile;
+use crate::i3c::i3c_config::{I3cConfig, Completion};
+use crate::i3c::ccc::*;
+use crate::i3c::ibi_workq;
 
 #[derive(Debug)]
 pub enum I3cDrvError {
@@ -20,13 +20,6 @@ pub enum I3cDrvError {
     InvalidArgs,
     Timeout,
     NoSuchDev,
-}
-
-pub trait CccOps {
-    fn entdaa_for_pos(&mut self, pos: u8) -> Result<u8, DaaError>;
-    fn getpid_bcr_dcr(&mut self, da: u8) -> Result<(u64, u8, u8), DaaError>;
-    fn setnewda(&mut self, from_da: u8, to_da: u8) -> Result<(), DaaError>;
-    fn enec_intr(&mut self, da: u8) -> Result<(), DaaError>;
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -45,219 +38,6 @@ pub enum DaaError {
     Internal,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DevKind { I3c, I2c }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DeviceEntry {
-    pub kind: DevKind,
-    pub pid: Option<u64>,
-    pub static_addr: u8,
-    pub dyn_addr: u8,
-    pub desired_da: u8,
-    pub bcr: u8,
-    pub dcr: u8,
-    pub maxrd: u8,
-    pub maxwr: u8,
-    pub mrl: u16,
-    pub mwl: u16,
-    pub max_ibi: u8,
-    pub ibi_en: bool,
-    pub pos: Option<u8>,
-}
-
-pub struct AddrBook {
-    pub in_use: [bool; 128],
-    pub reserved: [bool; 128],
-}
-
-impl AddrBook {
-    pub const fn new() -> Self {
-        Self { in_use: [false;128], reserved: [false;128] }
-    }
-
-    #[inline]
-    pub fn is_free(&self, a: u8) -> bool {
-        !self.in_use[a as usize] && !self.reserved[a as usize]
-    }
-
-    pub fn reserve_defaults(&mut self) {
-        for a in 0..=7 { self.reserved[a as usize] = true; }
-        self.reserved[0x7E as usize] = true;
-        for i in 0..=7 {
-            let alt = 0x7E ^ (1u8 << i);
-            if alt <= 0x7E { self.reserved[alt as usize] = true; }
-        }
-    }
-
-    pub fn alloc_from(&mut self, start: u8) -> Option<u8> {
-        let mut a = start.max(8);
-        while a < 0x7F {
-            if self.is_free(a) {
-                // self.in_use[a as usize] = true;
-                return Some(a);
-            }
-            a += 1;
-        }
-        None
-    }
-
-    #[inline]
-    pub fn mark_use(&mut self, a: u8, used: bool) {
-        if a != 0 { self.in_use[a as usize] = used; }
-    }
-}
-
-pub struct Attached {
-    pub devices: Vec<DeviceEntry, 8>,
-    pub by_pos: [Option<u8>; 8],
-}
-
-impl Attached {
-    pub const fn new() -> Self {
-        Self { devices: heapless::Vec::new(), by_pos: [None; 8] }
-    }
-
-    pub fn attach(&mut self, dev: DeviceEntry) -> Result<usize, ()> {
-        let idx = self.devices.len();
-        self.devices.push(dev).map_err(|_| ())?;
-        Ok(idx)
-    }
-
-    pub fn detach(&mut self, dev_idx: usize) {
-        if dev_idx >= self.devices.len() {
-            return;
-        }
-
-        if let Some(pos) = self.devices[dev_idx].pos {
-            if let Some(p) = self.by_pos.get_mut(pos as usize) {
-                *p = None;
-            }
-        }
-
-        self.devices.remove(dev_idx);
-        for bp in &mut self.by_pos {
-            if let Some(idx) = *bp {
-                let idx_usize = idx as usize;
-                if idx_usize > dev_idx {
-                    *bp = Some((idx_usize - 1) as u8);
-                }
-            }
-        }
-    }
-
-    pub fn detach_by_pos(&mut self, pos: usize) {
-        if let Some(Some(dev_idx)) = self.by_pos.get(pos) {
-            self.detach(*dev_idx as usize);
-        }
-    }
-    pub fn pos_of(&self, dev_idx: usize) -> Option<u8> {
-        self.by_pos
-            .iter()
-            .position(|&v| v == Some(dev_idx as u8))
-            .map(|p| p as u8)
-    }
-    pub fn find_dev_idx_by_addr(&self, da: u8) -> Option<usize> {
-        self.devices.iter().position(|d| d.dyn_addr == da)
-    }
-    pub fn pos_of_addr(&self, da: u8) -> Option<u8> {
-        let dev_idx = self.devices.iter().position(|d| d.dyn_addr == da)?;
-        self.pos_of(dev_idx)
-    }
-    pub fn pos_of_pid(&self, pid: u64) -> Option<u8> {
-        let dev_idx = self.devices.iter().position(|d| d.pid == Some(pid))?;
-        self.pos_of(dev_idx)
-    }
-
-    #[inline]
-    pub fn map_pos(&mut self, pos: u8, idx: u8) { self.by_pos[pos as usize] = Some(idx); }
-
-    #[inline]
-    pub fn unmap_pos(&mut self, pos: u8) { self.by_pos[pos as usize] = None; }
-}
-
-const IBIQ_DEPTH: usize = 16;
-const IBI_DATA_MAX: usize = 16;
-
-#[derive(Debug, Clone, Copy)]
-pub enum IbiWork {
-    HotJoin,
-    Sirq { addr: u8, len: u8, data: [u8; IBI_DATA_MAX] },
-    TargetDaAssignment,
-}
-
-static mut IBIQ_BUFS: [Queue<IbiWork, IBIQ_DEPTH>; 4] = [
-    Queue::new(), Queue::new(), Queue::new(), Queue::new()
-];
-
-struct IbiBus {
-    prod: Option<heapless::spsc::Producer<'static, IbiWork, IBIQ_DEPTH>>,
-    cons: Option<heapless::spsc::Consumer<'static, IbiWork, IBIQ_DEPTH>>,
-}
-
-static IBI_WORKQS: [Mutex<RefCell<IbiBus>>; 4] = [
-    Mutex::new(RefCell::new(IbiBus{prod:None,cons:None})),
-    Mutex::new(RefCell::new(IbiBus{prod:None,cons:None})),
-    Mutex::new(RefCell::new(IbiBus{prod:None,cons:None})),
-    Mutex::new(RefCell::new(IbiBus{prod:None,cons:None})),
-];
-
-fn ensure_ibiq_split(bus: usize) {
-    assert!(bus < 4);
-    critical_section::with(|cs| {
-        let mut b = IBI_WORKQS[bus].borrow(cs).borrow_mut();
-        if b.prod.is_none() || b.cons.is_none() {
-            let (p, c) = unsafe { IBIQ_BUFS[bus].split() };
-            b.prod = Some(p);
-            b.cons = Some(c);
-        }
-    });
-}
-
-pub fn i3c_ibi_workq_consumer(bus: usize) -> heapless::spsc::Consumer<'static, IbiWork, IBIQ_DEPTH> {
-    assert!(bus < 4);
-    critical_section::with(|cs| {
-        let mut b = IBI_WORKQS[bus].borrow(cs).borrow_mut();
-        if b.prod.is_none() || b.cons.is_none() {
-            let (p, c) = unsafe { IBIQ_BUFS[bus].split() };
-            b.prod = Some(p);
-            b.cons = Some(c);
-        }
-        b.cons.take().expect("IBI consumer already taken")
-    })
-}
-
-fn i3c_ibi_work_enqueue_target_da_assignment(bus: usize) {
-    ensure_ibiq_split(bus);
-    critical_section::with(|cs| {
-        if let Some(p) = IBI_WORKQS[bus].borrow(cs).borrow_mut().prod.as_mut() {
-            let _ = p.enqueue(IbiWork::TargetDaAssignment);
-        }
-    });
-}
-
-#[inline]
-fn i3c_ibi_work_enqueue_hotjoin(bus: usize) {
-    ensure_ibiq_split(bus);
-    critical_section::with(|cs| {
-        if let Some(p) = IBI_WORKQS[bus].borrow(cs).borrow_mut().prod.as_mut() {
-            let _ = p.enqueue(IbiWork::HotJoin);
-        }
-    });
-}
-
-#[inline]
-fn i3c_ibi_work_enqueue_target_irq(bus: usize, addr: u8, data: &[u8]) {
-    ensure_ibiq_split(bus);
-    let mut buf = [0u8; IBI_DATA_MAX];
-    let take = core::cmp::min(IBI_DATA_MAX, data.len());
-    buf[..take].copy_from_slice(&data[..take]);
-    critical_section::with(|cs| {
-        if let Some(p) = IBI_WORKQS[bus].borrow(cs).borrow_mut().prod.as_mut() {
-            let _ = p.enqueue(IbiWork::Sirq { addr, len: take as u8, data: buf });
-        }
-    });
-}
 #[derive(Clone, Copy)]
 struct Handler {
     func: fn(usize),
@@ -271,13 +51,12 @@ static BUS_HANDLERS: [Mutex<RefCell<Option<Handler>>>; 4] = [
     Mutex::new(RefCell::new(None)),
 ];
 
+
 pub fn register_i3c_irq_handler(bus: usize, func: fn(usize), ctx: usize) {
     assert!(bus < 4);
     critical_section::with(|cs| {
         *BUS_HANDLERS[bus].borrow(cs).borrow_mut() = Some(Handler { func, ctx });
     });
-
-    ensure_ibiq_split(bus);
 }
 
 #[inline]
@@ -304,45 +83,6 @@ pub extern "C" fn i3c2() {
 #[no_mangle]
 pub extern "C" fn i3c3() {
     dispatch_irq(3);
-}
-
-pub struct Completion {
-    done: AtomicBool,
-}
-
-impl Completion {
-    pub const fn new() -> Self {
-        Self { done: AtomicBool::new(false) }
-    }
-
-    #[inline]
-    pub fn reset(&self) {
-        self.done.store(false, Ordering::Release);
-    }
-
-    #[inline]
-    pub fn complete(&self) {
-        self.done.store(true, Ordering::Release);
-
-        cortex_m::asm::sev();
-    }
-
-    #[inline]
-    pub fn is_completed(&self) -> bool {
-        self.done.load(Ordering::Acquire)
-    }
-
-    pub fn wait_for_us<D: DelayNs>(&self, timeout_us: u32, delay: &mut D) -> bool {
-        let mut left = timeout_us;
-        while !self.is_completed() {
-            if left == 0 {
-                return false;
-            }
-            delay.delay_us(1);
-            left -= 1;
-        }
-        true
-    }
 }
 
 pub const I3C_MSG_WRITE: u8 = 0x0;
@@ -432,36 +172,6 @@ pub const IBIQ_STATUS_IBI_DATA_LEN_SHIFT: u32 = 0;
 
 pub const I3C_BCR_IBI_PAYLOAD_HAS_DATA_BYTE: u32 = bit(2);
 
-pub const I3C_CCC_RSTDAA:u8 = 0x6;
-pub const I3C_CCC_ENTDAA:u8 = 0x7;
-pub const I3C_CCC_SETHID:u8 = 0x61;
-pub const I3C_CCC_DEVCTRL:u8 = 0x62;
-pub const I3C_CCC_SETDASA:u8 = 0x87;
-pub const I3C_CCC_SETNEWDA:u8 = 0x88;
-pub const I3C_CCC_GETPID:u8 = 0x8d;
-pub const I3C_CCC_GETBCR:u8 = 0x8e;
-pub const I3C_CCC_GETSTATUS:u8 = 0x90;
-
-pub const I3C_CCC_EVT_INTR: u8 = 1 << 0;
-pub const I3C_CCC_EVT_CR:   u8 = 1 << 1;
-pub const I3C_CCC_EVT_HJ:   u8 = 1 << 3;
-pub const I3C_CCC_EVT_ALL: u8 = I3C_CCC_EVT_INTR | I3C_CCC_EVT_CR | I3C_CCC_EVT_HJ;
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CccRstActDefByte {
-    CccRstActNoReset = 0x0,
-    CccRstActPeriphralOnly  = 0x1,
-    CccRstActResetWholeTarget = 0x2,
-    CccRstActDebugNetworkAdapter = 0x3,
-    CccRstActVirtualTargetDetect = 0x4,
-}
-
-impl CccRstActDefByte {
-    #[inline]
-    fn as_byte(self) -> u8 { self as u8 }
-}
-
 const MAX_CMDS: usize = 32;
 
 #[repr(u32)]
@@ -544,10 +254,6 @@ pub const fn bits(h: u32, l: u32) -> u32 { ((1u32 << (h - l + 1)) - 1) << l }
 pub const fn field_prep(mask: u32, val: u32) -> u32 {
     (val << mask.trailing_zeros()) & mask
 }
-fn find_lsb_pos(x: u32) -> Option<u32> {
-    if x == 0 { None } else { Some(x.trailing_zeros() as u32) }
-}
-
 
 // ---- registers / fields ----
 pub const RESPONSE_QUEUE_PORT: u32 = 0x10;
@@ -652,35 +358,6 @@ impl I3cDeviceId {
 pub const I3C_BROADCAST_ADDR: u8 = 0x7E;
 pub const I3C_MAX_ADDR: u8 = 0x7F;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GetStatusFormat {
-    Fmt1,
-    Fmt2(GetStatusDefByte),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GetStatusDefByte {
-    /// 0x00 - TGTSTAT
-    TgtStat,
-    /// 0x91 - PRECR
-    Precr,
-}
-
-impl GetStatusDefByte {
-    #[inline]
-    fn as_byte(self) -> u8 {
-        match self {
-            GetStatusDefByte::TgtStat => 0x00,
-            GetStatusDefByte::Precr   => 0x91,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GetStatusResp {
-    Fmt1 { status: u16 },
-    Fmt2 { kind: GetStatusDefByte, raw_u16: u16 },
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum I3cIbiType {
@@ -704,99 +381,6 @@ impl<'a> I3cIbi<'a> {
 
     pub fn first_byte(&self) -> Option<u8> {
         self.payload.and_then(|p| p.first().copied())
-    }
-}
-
-pub struct I3cConfig {
-    // Optional: your own “common” higher-level state
-    pub common: CommonState,
-
-    pub target_config: Option<I3cTargetConfig>,
-    pub addrbook: AddrBook,
-    pub attached: Attached,
-
-    // Concurrency
-    pub curr_xfer: AtomicPtr<()>,
-
-    // Timing/phy params (ns)
-    pub core_period: u32,
-    pub i2c_scl_hz: u32,
-    pub i3c_scl_hz: u32,
-    pub i3c_pp_scl_hi_period_ns: u32,
-    pub i3c_pp_scl_lo_period_ns: u32,
-    pub i3c_od_scl_hi_period_ns: u32,
-    pub i3c_od_scl_lo_period_ns: u32,
-    pub sda_tx_hold_ns: u32,
-    pub is_secondary: bool,
-
-    // Tables/indices
-    pub maxdevs: u16,
-    pub free_pos: u32,
-    pub need_da: u32,
-
-    pub addrs: [u8; 8],
-    pub dcr: u32,
-
-    // Target-mode data
-    pub sir_allowed_by_sw: bool,
-    pub target_ibi_done: Completion,
-    pub target_data_done: Completion,
-}
-
-#[derive(Debug)]
-pub struct CccTargetPayload<'a> {
-    /// Target 7‑bit dynamic address (left‑aligned; driver decides if LSB is R/W).
-    pub addr: u8,
-    /// `false` = write, `true` = read.
-    pub rnw: bool,
-    /// Data buffer for write (source) or read (destination).
-    pub data: Option<&'a mut [u8]>,
-    /// Actual bytes transferred (driver fills on return).
-    pub num_xfer: usize,
-}
-
-#[derive(Debug)]
-pub struct Ccc<'a> {
-    pub id: u8,
-    /// Optional CCC data immediately following the CCC byte.
-    pub data: Option<&'a mut [u8]>,
-    /// Actual bytes transferred (driver fills on return).
-    pub num_xfer: usize,
-}
-
-/// One CCC transaction description.
-#[derive(Debug)]
-pub struct CccPayload<'a, 'b> {
-    pub ccc: Option<Ccc<'a>>,
-    /// Optional list of direct‑CCC target payloads.
-    pub targets: Option<&'b mut [CccTargetPayload<'a>]>,
-}
-
-#[derive(Default)]
-pub struct CommonState {
-    _phantom: PhantomData<()>,
-}
-
-#[derive(Default)]
-pub struct CommonCfg {
-    _phantom: PhantomData<()>,
-}
-
-#[derive(Clone, Copy)]
-pub struct ResetSpec {
-    pub id: u32,
-    pub active_high: bool,
-}
-
-pub struct I3cTargetConfig {
-    pub flags: u8,
-    pub addr: Option<u8>,
-    pub mdb: u8,
-}
-
-impl I3cTargetConfig {
-    pub const fn new(flags: u8,  addr: Option<u8>, mdb:u8) -> Self {
-        Self { flags, addr, mdb }
     }
 }
 
@@ -846,16 +430,7 @@ pub trait HardwareInterface {
     fn attach_i3c_dev( &mut self, pos: usize, addr: u8,) -> i32;
     fn do_ccc(&mut self, config: &mut I3cConfig, ccc: &mut CccPayload) -> i32;
     fn do_entdaa(&mut self, config: &mut I3cConfig, index: u32) -> i32;
-    fn bytes_to_pid(bytes: &[u8]) -> u64;
     fn handle_unsolicited(&mut self, config: &mut I3cConfig);
-    fn do_daa(
-    cfg: &mut I3cConfig,
-    ccc: &mut impl CccOps,
-    pos: u8,
-    desired_da: u8,
-    enable_ibi_after: bool,
-        conflict: OnConflict,
-) -> Result<u8, DaaError>;
     fn priv_xfer_build_cmds<'a>( &mut self, cmds: &mut [I3cCmd<'a>], msgs: &mut [I3cMsg<'a>], pos: u8,) -> i32;
     fn priv_xfer(&mut self, config: &mut I3cConfig, pid: u64, msgs: &mut [I3cMsg]) -> Result<(), I3cDrvError>;
     fn target_tx_write(&mut self, buf: &[u8]);
@@ -866,18 +441,6 @@ pub trait HardwareInterface {
     fn target_handle_response_ready(&mut self, config: &mut I3cConfig);
     fn target_pending_read_notify(&mut self, config: &mut I3cConfig, buf: &[u8], notifier: &mut I3cIbi) -> i32;
     fn target_handle_ccc_update(&mut self, config: &mut I3cConfig);
-    // ccc apis
-    fn ccc_do_getbcr(&mut self, config: &mut I3cConfig, dyn_addr: u8) -> Result<u8, i32>;
-    fn ccc_do_setnewda( &mut self, config: &mut I3cConfig, curr_da: u8, new_da: u8,) -> i32;
-    fn ccc_do_getpid(&mut self, config: &mut I3cConfig, dyn_addr: u8) -> Result<u64, i32>;
-    fn ccc_do_events_all_set(&mut self, config: &mut I3cConfig, enable: bool, events: u8) -> i32;
-    fn ccc_do_events_set(&mut self, config: &mut I3cConfig, da: u8, enable: bool, events: u8) -> i32;
-    fn ccc_do_getstatus( &mut self, config: &mut I3cConfig, da: u8, fmt: GetStatusFormat,) -> Result<GetStatusResp, i32>;
-    fn ccc_do_getstatus_fmt1(&mut self, config: &mut I3cConfig, da: u8) -> Result<u16, i32>;
-    fn ccc_do_rstact_all(&mut self, config: &mut I3cConfig, action: CccRstActDefByte) -> i32;
-    fn ccc_do_rstdaa_all(&mut self, config: &mut I3cConfig) -> i32;
-    fn ccc_do_setdasa(&mut self, config: &mut I3cConfig, dev_idx: usize) -> i32;
-    // ibi workq
 }
 
 pub trait Instance {
@@ -928,70 +491,6 @@ impl<I3C: Instance, L: Logger> Ast1060I3c<I3C, L> {
         // let i3c_config = I3cConfig::new();
         // Self { i3c, i3cg, scu, i3c_config, logger, _marker: PhantomData}
         Self { i3c, i3cg, scu, logger, _marker: PhantomData}
-    }
-}
-
-impl I3cConfig {
-    pub fn new() -> Self {
-        Self {
-            common: CommonState::default(),
-            target_config: None,
-            addrbook: AddrBook::new(),
-            attached: Attached::new(),
-            curr_xfer: AtomicPtr::new(core::ptr::null_mut()),
-            core_period: 0,
-            i2c_scl_hz: 0,
-            i3c_scl_hz: 0,
-            i3c_pp_scl_hi_period_ns: 0,
-            i3c_pp_scl_lo_period_ns: 0,
-            i3c_od_scl_hi_period_ns: 0,
-            i3c_od_scl_lo_period_ns: 0,
-            sda_tx_hold_ns: 0,
-            is_secondary: false,
-            maxdevs: 8,
-            free_pos: 0,
-            need_da: 0,
-            addrs: [0; 8],
-            dcr: 0,
-            sir_allowed_by_sw: false,
-            target_ibi_done: Completion::new(),
-            target_data_done: Completion::new(),
-        }
-    }
-
-    pub fn init_runtime_fields(&mut self) {
-        self.addrbook = AddrBook::new();
-        self.addrbook.reserve_defaults();
-        self.attached = Attached::new();
-    }
-    pub fn pick_initial_da(&mut self, static_addr: u8, desired: u8) -> Option<u8> {
-        if desired != 0 && self.addrbook.is_free(desired) {
-            self.addrbook.mark_use(desired, true);
-            return Some(desired);
-        }
-        if static_addr != 0 && self.addrbook.is_free(static_addr) {
-            self.addrbook.mark_use(static_addr, true);
-            return Some(static_addr);
-        }
-        self.addrbook.alloc_from(8)
-    }
-
-    pub fn reassign_da(&mut self, from: u8, to: u8) -> Result<(), ()> {
-        if from == to { return Ok(()); }
-        if !self.addrbook.is_free(to) { return Err(()); }
-
-        self.addrbook.mark_use(from, false);
-        self.addrbook.mark_use(to,   true);
-
-        if let Some((i, mut e)) = self.attached.devices
-            .iter()
-                .enumerate()
-                .find_map(|(i, d)| (d.dyn_addr == from).then_some((i, *d)))
-        {
-            e.dyn_addr = to;
-            self.attached.devices[i] = e;
-            Ok(())
-        } else { Err(()) }
     }
 }
 
@@ -1154,77 +653,6 @@ where
     Err(PollError::Timeout)
 }
 
-pub struct I3cController<H: HardwareInterface, L: Logger> {
-    pub hw: H,
-    pub config: I3cConfig,
-    pub logger: L,
-}
-
-impl<H: HardwareInterface, L: Logger> I3cController<H, L> {
-    pub fn init(&mut self) {
-        i3c_debug!(self.logger, "I3C controller init");
-        let ctx = (self as *mut Self) as usize;
-        let bus = self.hw.bus_num() as usize;
-        register_i3c_irq_handler(bus, Self::irq_trampoline, ctx);
-
-        self.hw.enable_irq();
-        self.hw.init(&mut self.config);
-    }
-
-    fn irq_trampoline(ctx: usize) {
-        let ctrl: &mut Self = unsafe { &mut *(ctx as *mut Self) };
-        ctrl.hw.i3c_aspeed_isr(&mut ctrl.config);
-    }
-
-    pub fn attach_i3c_dev(&mut self, pid: u64, desired_da: u8, slot: u8) -> Result<(), ()> {
-        // let da = self.config.pick_initial_da(static_addr, desired_da).ok_or(())?;
-        if desired_da == 0 || desired_da >= I3C_BROADCAST_ADDR {
-            return Err(());
-        }
-
-        let dev = DeviceEntry {
-            kind: DevKind::I3c,
-            pid: Some(pid),
-            static_addr: 0,
-            dyn_addr: desired_da,
-            desired_da,
-            bcr: 0, dcr: 0,
-            maxrd: 0, maxwr: 0,
-            mrl: 0, mwl: 0,
-            max_ibi: 0,
-            ibi_en: false,
-            pos: Some(slot),
-        };
-
-        let idx = self.config.attached.attach(dev)?;
-        self.config.attached.map_pos(slot, idx as u8);
-        self.config.addrbook.mark_use(desired_da, true);
-        self.hw.attach_i3c_dev(slot.into(), desired_da);
-        // self.hw.enable_dev_ibi(slot.into(), true);
-
-        Ok(())
-    }
-    pub fn detach_i3c_dev(&mut self, pos: usize) -> Result<(), ()> {
-        self.config.attached.detach_by_pos(pos);
-        self.hw.detach_i3c_dev(pos.into());
-
-        Ok(())
-    }
-    pub fn detach_i3c_dev_by_idx(&mut self, dev_idx: usize) {
-        let dev = &self.config.attached.devices[dev_idx];
-
-        if dev.dyn_addr != 0 {
-            self.config.addrbook.mark_use(dev.dyn_addr, false);
-        }
-
-        if let Some(pos) = dev.pos {
-            self.hw.detach_i3c_dev(pos.into());
-        }
-
-        self.config.attached.detach(dev_idx);
-    }
-}
-
 impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     fn init(&mut self, config: &mut I3cConfig) {
         i3c_debug!(self.logger, "i3c init");
@@ -1370,12 +798,12 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
         self.i3c_enable(config);
 
-        i3c_debug!(self.logger, "i3c enabled");
         // Perform bus initialization
         if !config.is_secondary {
             self.i3c_bus_init(config);
         }
 
+        i3c_debug!(self.logger, "i3c enabled");
         // Enable hot-join
         if !config.is_secondary {
             self.i3c.i3cd040().modify(|_, w| w.ibithldstaten().set_bit());
@@ -1648,16 +1076,16 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
     fn i3c_bus_init(&mut self, config: &mut I3cConfig) {
         i3c_debug!(self.logger, "i3c bus init");
-        let ret = self.ccc_do_rstact_all(config , CccRstActDefByte::CccRstActResetWholeTarget);
+        let ret = ccc_rstact_all(self, config , CccRstActDefByte::CccRstActResetWholeTarget);
         if ret != 0 {
-            self.ccc_do_rstact_all(config , CccRstActDefByte::CccRstActPeriphralOnly);
+            ccc_rstact_all(self, config , CccRstActDefByte::CccRstActPeriphralOnly);
             return;
         }
 
-        self.ccc_do_rstdaa_all(config);
+        ccc_rstdaa_all(self, config);
         let events = I3C_CCC_EVT_ALL;
-        self.ccc_do_events_all_set(config, false, events);
-        self.ccc_do_events_all_set(config, true, I3C_CCC_EVT_HJ);
+        ccc_events_all_set(self, config, false, events);
+        ccc_events_all_set(self, config, true, I3C_CCC_EVT_HJ);
         i3c_debug!(self.logger, "i3c bus init done");
     }
 
@@ -1826,7 +1254,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
 
         let events = I3C_CCC_EVT_INTR;
-        let _ = self.ccc_do_events_set(config, dev.dyn_addr, true, events);
+        let _ = ccc_events_set(self, config, dev.dyn_addr, true, events);
 
         i3c_debug!(self.logger, "i3cd030 (SIR reject) = {:#x}", sir_reject);
         i3c_debug!(self.logger, "i3cd040 (IBI thld) = {:#x}", self.i3c.i3cd040().read().bits());
@@ -2141,131 +1569,8 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         xfer.ret
     }
 
-
-    fn bytes_to_pid(bytes: &[u8]) -> u64 {
-        bytes.iter()
-            .take(6)
-            .fold(0u64, |acc, &b| (acc << 8) | b as u64)
-    }
-
     fn handle_unsolicited(&mut self, _config: &mut I3cConfig) {
         // todo
-    }
-
-    fn do_daa(
-        cfg: &mut I3cConfig,
-        ccc: &mut impl CccOps,
-        pos: u8,
-        desired_da: u8,
-        enable_ibi_after: bool,
-        conflict: OnConflict,
-    ) -> Result<u8, DaaError> {
-
-        let da_tmp = ccc.entdaa_for_pos(pos)?;
-
-        let (pid, bcr, dcr) = ccc.getpid_bcr_dcr(da_tmp)?;
-
-        let dev_idx = match cfg.attached.devices.iter().position(|d| d.pid == Some(pid)) {
-            Some(i) => i,
-            None => {
-                let dev = DeviceEntry {
-                    kind: DevKind::I3c,
-                    pid: Some(pid),
-                    static_addr: 0,
-                    dyn_addr: da_tmp,
-                    desired_da,
-                    bcr,
-                    dcr,
-                    maxrd: 0,
-                    maxwr: 0,
-                    mrl: 0,
-                    mwl: 0,
-                    max_ibi: 0,
-                    ibi_en: false,
-                    pos: Some(pos),
-                };
-                cfg.attached.attach(dev).map_err(|_| DaaError::Internal)?
-            }
-        };
-
-        cfg.attached.map_pos(pos, dev_idx as u8);
-        if !cfg.addrbook.in_use[da_tmp as usize] {
-            cfg.addrbook.mark_use(da_tmp, true);
-        }
-
-        let want = {
-            let e = &mut cfg.attached.devices[dev_idx];
-
-            if e.dyn_addr != 0 && e.dyn_addr != da_tmp {
-                cfg.addrbook.mark_use(e.dyn_addr, false);
-            }
-            e.dyn_addr = da_tmp;
-            e.bcr = bcr;
-            e.dcr = dcr;
-            e.pos = Some(pos);
-
-            if desired_da != 0 { desired_da } else { e.desired_da }
-        };
-
-        if want != 0 && want != da_tmp {
-            if cfg.addrbook.is_free(want) {
-                ccc.setnewda(da_tmp, want).map_err(|_| DaaError::SetNewDaFailed)?;
-                cfg.addrbook.mark_use(da_tmp, false);
-                cfg.addrbook.mark_use(want, true);
-                cfg.attached.devices[dev_idx].dyn_addr = want;
-            } else {
-                match conflict {
-                    OnConflict::KeepTemp => {}
-
-                    OnConflict::PickNextFree => {
-                        if let Some(next) = cfg.addrbook.alloc_from(8) {
-                            ccc.setnewda(da_tmp, next).map_err(|_| DaaError::SetNewDaFailed)?;
-                            cfg.addrbook.mark_use(da_tmp, false);
-                            cfg.attached.devices[dev_idx].dyn_addr = next;
-                        }
-                    }
-
-                    OnConflict::TrySwapWithDesired => {
-                        if let Some(occ_idx) = cfg.attached.devices
-                            .iter()
-                                .position(|d| d.dyn_addr == want)
-                        {
-                            if let Some(temp) = cfg.addrbook.alloc_from(8) {
-                                ccc.setnewda(want, temp).map_err(|_| DaaError::SetNewDaFailed)?;
-                                cfg.addrbook.mark_use(want, false);
-                                cfg.attached.devices[occ_idx].dyn_addr = temp;
-
-                                if let Err(_) = ccc.setnewda(da_tmp, want) {
-                                    let _ = ccc.setnewda(temp, want);
-                                    cfg.addrbook.mark_use(want, true);
-                                    cfg.addrbook.mark_use(temp, false);
-                                } else {
-                                    cfg.addrbook.mark_use(da_tmp, false);
-                                    cfg.addrbook.mark_use(want, true);
-                                    cfg.attached.devices[dev_idx].dyn_addr = want;
-
-                                    if let Err(_) = ccc.setnewda(temp, da_tmp) {
-                                    } else {
-                                        cfg.addrbook.mark_use(temp, false);
-                                        cfg.addrbook.mark_use(da_tmp, true);
-                                        cfg.attached.devices[occ_idx].dyn_addr = da_tmp;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let final_da = cfg.attached.devices[dev_idx].dyn_addr;
-        if enable_ibi_after {
-            if ccc.enec_intr(final_da).is_ok() {
-                cfg.attached.devices[dev_idx].ibi_en = true;
-            }
-        }
-
-        Ok(final_da)
     }
 
     fn priv_xfer_build_cmds<'a>(
@@ -2412,7 +1717,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         let take = core::cmp::min(len, buf.len());
         self.rd_ibi_fifo(&mut buf[..take]);
         let bus = I3C::BUS_NUM as usize;
-        i3c_ibi_work_enqueue_target_irq(bus, addr, &buf[..take]);
+        ibi_workq::i3c_ibi_work_enqueue_target_irq(bus, addr, &buf[..take]);
 
     }
 
@@ -2442,7 +1747,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                 // hot-join
                 let bus = I3C::BUS_NUM as usize;
                 i3c_debug!(self.logger, "Hot-join IBI");
-                i3c_ibi_work_enqueue_hotjoin(bus);
+                ibi_workq::i3c_ibi_work_enqueue_hotjoin(bus);
             } else {
                 // normal ibi
                 i3c_debug!(self.logger, "Normal IBI");
@@ -2466,7 +1771,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
                 if let Some(tc) = &mut config.target_config {
                     tc.addr = Some(da);
                 }
-                i3c_ibi_work_enqueue_target_da_assignment(I3C::BUS_NUM.into());
+                ibi_workq::i3c_ibi_work_enqueue_target_da_assignment(I3C::BUS_NUM.into());
             }
 
             if (status & INTR_RESP_READY_STAT) != 0 {
@@ -2494,228 +1799,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         self.enable_irq();
     }
 
-    fn ccc_do_events_all_set(&mut self, config: &mut I3cConfig, enable: bool, events: u8) -> i32 {
-        let id = if enable { i3c_ccc_enec(true) } else { i3c_ccc_disec(true) };
-        self.do_ccc(config, &mut CccPayload {
-            ccc: Some(Ccc { id, data: Some(&mut [events]), num_xfer: 0 }),
-            targets: None,
-        })
-    }
-
-    fn ccc_do_events_set(&mut self, config: &mut I3cConfig, da: u8, enable: bool, events: u8) -> i32 {
-
-        if da == 0 {
-            return -22
-        }
-
-        let mut ev_buf = [events];
-        let tgt = CccTargetPayload {
-            addr: da,
-            rnw: false,
-            data: Some(&mut ev_buf[..]),
-            num_xfer: 0,
-        };
-
-        let mut tgts = [tgt];
-        let ccc_id = if enable { i3c_ccc_enec(false) } else { i3c_ccc_disec(false) };
-        let ccc = Ccc {
-            id: ccc_id,
-            data: None,
-            num_xfer: 0,
-        };
-
-        let mut payload = CccPayload {
-            ccc: Some(ccc),
-            targets: Some(&mut tgts[..]),
-        };
-
-        let ret = self.do_ccc(config, &mut payload);
-
-        ret
-    }
-
-    fn ccc_do_getstatus( &mut self, config: &mut I3cConfig, da: u8, fmt: GetStatusFormat,) -> Result<GetStatusResp, i32> {
-
-        let mut data_buf = [0u8; 2];
-
-        let mut defbyte_buf = [0u8; 1];
-
-        let tgt = CccTargetPayload {
-            addr: da,
-            rnw: true,
-            data: Some(&mut data_buf[..]),
-            num_xfer: 0,
-        };
-
-        let mut ccc = Ccc {
-            id: I3C_CCC_GETSTATUS,
-            data: None,
-            num_xfer: 0,
-        };
-
-        let kind_opt = match fmt {
-            GetStatusFormat::Fmt1 => None,
-            GetStatusFormat::Fmt2(kind) => {
-                defbyte_buf[0] = kind.as_byte();
-                ccc.data = Some(&mut defbyte_buf[..]);
-                Some(kind)
-            }
-        };
-
-        let mut targets_arr = [tgt];
-        let mut payload = CccPayload {
-            ccc: Some(ccc),
-            targets: Some(&mut targets_arr[..]),
-        };
-
-        let ret = self.do_ccc(config, &mut payload);
-        if ret != 0 {
-            return Err(ret);
-        }
-
-        let val = u16::from_be_bytes(data_buf);
-
-        let resp = match kind_opt {
-            None => GetStatusResp::Fmt1 { status: val },
-            Some(kind) => GetStatusResp::Fmt2 { kind, raw_u16: val },
-        };
-
-        Ok(resp)
-    }
-
-    fn ccc_do_getpid(&mut self, config: &mut I3cConfig, dyn_addr: u8) -> Result<u64, i32> {
-        let mut pid_buf = [0u8; 6];
-
-        let tgt = CccTargetPayload {
-            addr: dyn_addr,
-            rnw: true,
-            data: Some(&mut pid_buf[..]),
-            num_xfer: 0,
-        };
-        let mut tgts = [tgt];
-
-        let ccc = Ccc { id: I3C_CCC_GETPID, data: None, num_xfer: 0 };
-        let mut payload = CccPayload { ccc: Some(ccc), targets: Some(&mut tgts[..]) };
-
-        let ret = self.do_ccc(config, &mut payload);
-        if ret != 0 {
-            return Err(ret);
-        }
-        Ok(Self::bytes_to_pid(&pid_buf))
-    }
-    fn ccc_do_setnewda(
-        &mut self,
-        config: &mut I3cConfig,
-        curr_da: u8,
-        new_da: u8,
-    ) -> i32 {
-        if curr_da == 0 || new_da == 0 { return -22; }
-
-        let pos = config.attached.pos_of_addr(curr_da);
-        i3c_debug!(self.logger, "ccc_do_setnewda: curr_da=0x{:02x}, new_da=0x{:02x}, pos={:?}", curr_da, new_da, pos);
-        if pos.is_none() {
-            return -22;
-        }
-
-        if !config.addrbook.is_free(new_da) {
-            return -22; // -EINVAL
-        }
-        let mut new_dyn_addr = (new_da & 0x7F) << 1;
-        let tgt = CccTargetPayload { addr: curr_da, rnw: false, data: Some(core::slice::from_mut(&mut new_dyn_addr)), num_xfer: 0 };
-        let mut tgts = [tgt];
-        let ccc = Ccc { id: I3C_CCC_SETNEWDA, data: None, num_xfer: 0 };
-        let mut payload = CccPayload { ccc: Some(ccc), targets: Some(&mut tgts[..]) };
-
-        let ret = self.do_ccc(config, &mut payload);
-        ret
-    }
-
-    fn ccc_do_getstatus_fmt1(&mut self, config: &mut I3cConfig, da: u8) -> Result<u16, i32> {
-        match self.ccc_do_getstatus(config, da, GetStatusFormat::Fmt1) {
-            Ok(GetStatusResp::Fmt1 { status }) => Ok(status),
-            Ok(_) => Err(-22),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn ccc_do_getbcr(&mut self, config: &mut I3cConfig, dyn_addr: u8) -> Result<u8, i32> {
-        if dyn_addr == 0 {
-            return Err(-22); // -EINVAL
-        }
-
-        let mut bcr_buf = [0u8; 1];
-
-        let tgt = CccTargetPayload {
-            addr: dyn_addr,
-            rnw: true,
-            data: Some(&mut bcr_buf[..]),
-            num_xfer: 0,
-        };
-        let mut tgts = [tgt];
-
-        let ccc = Ccc { id: I3C_CCC_GETBCR, data: None, num_xfer: 0 };
-        let mut payload = CccPayload { ccc: Some(ccc), targets: Some(&mut tgts[..]) };
-
-        let ret = self.do_ccc(config, &mut payload);
-        if ret != 0 {
-            return Err(ret);
-        }
-
-        Ok(bcr_buf[0])
-    }
-
-    fn ccc_do_rstact_all(&mut self, config: &mut I3cConfig, action: CccRstActDefByte) -> i32 {
-        i3c_debug!(self.logger, "ccc_do_rstact_all {:?}", action);
-        let mut db = [action.as_byte()];
-        let ccc = Ccc { id: i3c_ccc_rstact(true), data: Some(&mut db[..]), num_xfer: 0 };
-        let mut payload = CccPayload { ccc: Some(ccc), targets: None };
-
-        self.do_ccc(config, &mut payload)
-    }
-
-    fn ccc_do_rstdaa_all(&mut self, config: &mut I3cConfig) -> i32 {
-        i3c_debug!(self.logger, "ccc_do_rstdaa_all");
-        self.do_ccc(config, &mut CccPayload {
-            ccc: Some(Ccc { id: I3C_CCC_RSTDAA, data: None, num_xfer: 0 }),
-            targets: None,
-        })
-    }
-
-    fn ccc_do_setdasa(&mut self, config: &mut I3cConfig, dev_idx: usize) -> i32 {
-        0
-        // if dev_idx >= config.devs.i3c_devices.len() {
-        //     return -22; // -EINVAL
-        // }
-        // let desc = &config.devs.i3c_devices[dev_idx];
-        //
-        // if desc.static_addr == 0 || desc.dynamic_addr != 0 {
-        //     return -22; // -EINVAL
-        // }
-        //
-        // let da7: u8 = if desc.init_dyn_addr != 0 { desc.init_dyn_addr } else { desc.static_addr } & 0x7F;
-        //
-        // if desc.init_dyn_addr != 0 && desc.init_dyn_addr != desc.static_addr {
-        //     if config.devs.addr_slots.status(da7) != I3cAddrSlotStatus::Free {
-        //         return -22; // -EINVAL
-        //     }
-        // }
-        //
-        // let mut da8: u8 = (da7 << 1) & 0xFE;
-        //
-        // let mut tgt = CccTargetPayload {
-        //     addr: desc.static_addr,
-        //     rnw: false,
-        //     data: Some(core::slice::from_mut(&mut da8)), // &mut [u8; 1]
-        //     num_xfer: 0,
-        // };
-        // let mut payload = CccPayload {
-        //     ccc: Some(Ccc { id: I3C_CCC_SETDASA, data: None, num_xfer: 0 }),
-        //     targets: Some(core::slice::from_mut(&mut tgt)),
-        // };
-        //
-        // self.do_ccc(config, 0, &mut payload)
-    }
-
     fn target_handle_response_ready(&mut self, config: &mut I3cConfig) {
         let nresp = self.i3c.i3cd04c().read().respbufblr().bits();
 
@@ -2728,7 +1811,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             i3c_debug!(self.logger, "Response: tid={}, rx_len={}, err={}", tid, rx_len, err);
 
             if err != 0 {
-                // todo: reset controller on error
                 self.enter_halt(false, config);
                 self.reset_ctrl(RESET_CTRL_QUEUES);
                 self.exit_halt(config);
@@ -2742,12 +1824,10 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             }
 
             if tid == Tid::TargetIbi as usize {
-                // k_sem_give(&data->target_ibi_sem);
                 config.target_ibi_done.complete();
             }
 
             if tid == Tid::TargetRdData as usize {
-                // k_sem_give(&data->target_data_sem);
                 config.target_data_done.complete();
             }
         }
@@ -2852,16 +1932,3 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         0
     }
 }
-
-pub const fn i3c_ccc_enec(broadcast: bool) -> u8 {
-    if broadcast { 0x00 } else { 0x80 }
-}
-
-pub const fn i3c_ccc_disec(broadcast: bool) -> u8 {
-    if broadcast { 0x01 } else { 0x81 }
-}
-
-pub const fn i3c_ccc_rstact(broadcast: bool) -> u8 {
-    if broadcast { 0x2a } else { 0x9a }
-}
-
