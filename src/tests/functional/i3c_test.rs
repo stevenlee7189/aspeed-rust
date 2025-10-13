@@ -214,27 +214,31 @@ pub fn test_i3c_target(uart: &mut UartController<'_>) {
                     delay.delay_ns(4_000_000_000);
                     writeln!(uart, "[IBI] TargetDaAssignment\r").unwrap();
                     writeln!(uart, "  allow SIR by SW\r").unwrap();
-                    ctrl.config.sir_allowed_by_sw = true;
                     let da = ctrl.config.target_config.as_ref().unwrap().addr;
-                    let mdb = ctrl.config.target_config.as_ref().unwrap().mdb;
-                    let addr_rnw;
-                    if let Some(da_val) = da {
-                        addr_rnw = (da_val << 1) | 0x1;
-                    } else {
-                        writeln!(uart, "  no dyn addr\r").unwrap();
-                        return;
+                    writeln!(uart, "  dyn addr 0x{:02x} was assigned by master\r", da.unwrap()).unwrap();
+                    ctrl.config.sir_allowed_by_sw = true;
+                    let reg = ctrl.hw.i3c.i3cd038().read().bits();
+                    if reg != 0 {
+                        let mdb = ctrl.config.target_config.as_ref().unwrap().mdb;
+                        let addr_rnw;
+                        if let Some(da_val) = da {
+                            addr_rnw = (da_val << 1) | 0x1;
+                        } else {
+                            writeln!(uart, "  no dyn addr\r").unwrap();
+                            return;
+                        }
+                        let mut pec = crc8_ccitt(0, &[addr_rnw]);
+                        pec = crc8_ccitt(pec, &[mdb]);
+                        writeln!(uart, "  assigned dyn addr 0x{:02x}, mdb 0x{:02x}, pec 0x{:02x}\r", da.unwrap(), mdb, pec).unwrap();
+
+                        let payload = [mdb, pec];
+                        let mut data_to_read = [0u8; 16];
+                        for (i, b) in data_to_read.iter_mut().enumerate() { *b = i as u8; }
+
+                        let mut ibi = I3cIbi { ibi_type: I3cIbiType::TargetIntr, payload: Some(&payload) };
+                        let rc = ctrl.hw.target_pending_read_notify(&mut ctrl.config, &data_to_read, &mut ibi);
+                        writeln!(uart, "  pending_read_notify rc {}\r", rc).unwrap();
                     }
-                    let mut pec = crc8_ccitt(0, &[addr_rnw]);
-                    pec = crc8_ccitt(pec, &[mdb]);
-                    writeln!(uart, "  assigned dyn addr 0x{:02x}, mdb 0x{:02x}, pec 0x{:02x}\r", da.unwrap(), mdb, pec).unwrap();
-
-                    let payload = [mdb, pec];
-                    let mut data_to_read = [0u8; 16];
-                    for (i, b) in data_to_read.iter_mut().enumerate() { *b = i as u8; }
-
-                    let mut ibi = I3cIbi { ibi_type: I3cIbiType::TargetIntr, payload: Some(&payload) };
-                    let rc = ctrl.hw.target_pending_read_notify(&mut ctrl.config, &data_to_read, &mut ibi);
-                    writeln!(uart, "  pending_read_notify rc {}\r", rc).unwrap();
                 }
             }
         }

@@ -129,7 +129,7 @@ impl<H: HardwareInterface, L: Logger> I3c for I3cController<H, L> {
     }
 
     fn request_mastership(&mut self) -> Result<(), Self::Error> {
-        // ast1060 doesn't support multi-master
+        // ast1060 controller doesn't support multi-master
         Ok(())
     }
 }

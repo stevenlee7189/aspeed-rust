@@ -219,8 +219,8 @@ fn main() -> ! {
     // i3c_test::test_i3c_slave(&mut uart_controller);
     setup_bmc_sequence(&mut uart_controller);
 
-    i3c_test::test_i3c_master(&mut uart_controller);
-    // i3c_test::test_i3c_target(&mut uart_controller);
+    // i3c_test::test_i3c_master(&mut uart_controller);
+    i3c_test::test_i3c_target(&mut uart_controller);
 
     // test_wdt(&mut uart_controller);
     // run_timer_tests(&mut uart_controller);

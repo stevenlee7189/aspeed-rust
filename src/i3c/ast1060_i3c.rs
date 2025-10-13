@@ -62,27 +62,27 @@ pub const COMMAND_PORT_SDAP:          u32 = bit(27);
 pub const COMMAND_PORT_ROC:           u32 = bit(26);
 pub const COMMAND_PORT_DBP:           u32 = bit(25);
 pub const COMMAND_PORT_CP:            u32 = bit(15);
-
-// --- field masks ---
 pub const COMMAND_PORT_SPEED:     u32 = bits(23, 21);
 pub const COMMAND_PORT_DEV_INDEX: u32 = bits(20, 16);
 pub const COMMAND_PORT_CMD:       u32 = bits(14, 7);
 pub const COMMAND_PORT_TID:       u32 = bits(6, 3);
+pub const COMMAND_PORT_ARG_DB:       u32 = bits(15, 8);
+pub const COMMAND_PORT_ARG_DATA_LEN: u32 = bits(31, 16);
+pub const COMMAND_PORT_ATTR:      u32 = bits(2, 0);
+pub const COMMAND_PORT_DEV_COUNT: u32 = bits(25, 21);
+
 pub const TID_TARGET_IBI:      u32 = 0x1;
 pub const TID_TARGET_RD_DATA: u32 = 0x2;
 pub const TID_TARGET_MASTER_WR: u32 = 0x8;
 pub const TID_TARGET_MASTER_DEF: u32 = 0xf;
-pub const COMMAND_PORT_ATTR:      u32 = bits(2, 0);
+
 pub const COMMAND_ATTR_XFER_CMD:        u32 = 0;
 pub const COMMAND_ATTR_XFER_ARG:        u32 = 1;
 pub const COMMAND_ATTR_SHORT_ARG:       u32 = 2;
 pub const COMMAND_ATTR_ADDR_ASSGN_CMD:  u32 = 3;
 pub const COMMAND_ATTR_SLAVE_DATA_CMD:  u32 = 0;
 
-pub const COMMAND_PORT_ARG_DB:       u32 = bits(15, 8);
-pub const COMMAND_PORT_ARG_DATA_LEN: u32 = bits(31, 16);
 
-/// Device Address Table fields
 pub const DEV_ADDR_TABLE_LEGACY_I2C_DEV: u32 = bit(31);
 pub const DEV_ADDR_TABLE_DYNAMIC_ADDR:   u32 = bits(23, 16);
 pub const DEV_ADDR_TABLE_MR_REJECT:      u32 = bit(14);
@@ -96,8 +96,6 @@ pub const IBIQ_STATUS_IBI_ID: u32 = bits(15, 8);
 pub const IBIQ_STATUS_IBI_ID_SHIFT: u32 = 8;
 pub const IBIQ_STATUS_IBI_DATA_LEN: u32 = bits(7, 0);
 pub const IBIQ_STATUS_IBI_DATA_LEN_SHIFT: u32 = 0;
-
-pub const COMMAND_PORT_DEV_COUNT: u32 = bits(25, 21);
 
 pub const RESET_CTRL_IBI_QUEUE: u32   = bit(5);
 pub const RESET_CTRL_RX_FIFO: u32     = bit(4);
@@ -152,7 +150,6 @@ pub const INTR_STATUS_EN:  u32 = 0x40;
 pub const INTR_SIGNAL_EN:  u32 = 0x44;
 pub const INTR_FORCE:      u32 = 0x48;
 
-// Interrupt status bits
 pub const INTR_BUSOWNER_UPDATE_STAT: u32 = bit(13);
 pub const INTR_IBI_UPDATED_STAT:     u32 = bit(12);
 pub const INTR_READ_REQ_RECV_STAT:   u32 = bit(11);
@@ -252,7 +249,7 @@ pub enum SpeedI3c {
     Sdr4   = 0x4,
     HdrTs  = 0x5,
     HdrDdr = 0x6,
-    I2cFmAsI3c = 0x7, // SPEED_I3C_I2C_FM
+    I2cFmAsI3c = 0x7,
 }
 
 #[repr(u32)]
@@ -449,7 +446,6 @@ pub struct Ast1060I3c<I3C: Instance, L: Logger> {
     pub i3c: &'static ast1060_pac::i3c::RegisterBlock,
     pub i3cg: &'static ast1060_pac::i3cglobal::RegisterBlock,
     pub scu: &'static ast1060_pac::scu::RegisterBlock,
-    // pub i3c_config: I3cConfig,
     pub logger: L,
     _marker: PhantomData<I3C>,
 }
@@ -459,8 +455,6 @@ impl<I3C: Instance, L: Logger> Ast1060I3c<I3C, L> {
         let i3c = unsafe { &*I3C::ptr() };
         let i3cg = unsafe { &*I3C::ptr_global() };
         let scu = unsafe { &*I3C::scu() };
-        // let i3c_config = I3cConfig::new();
-        // Self { i3c, i3cg, scu, i3c_config, logger, _marker: PhantomData}
         Self { i3c, i3cg, scu, logger, _marker: PhantomData}
     }
 }
@@ -1624,7 +1618,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
         let ret = self.priv_xfer_build_cmds(cmds.as_mut_slice(), msgs, pos);
         if ret != 0 {
-            I3cDrvError::InvalidArgs;
+            return Err(I3cDrvError::InvalidArgs);
         }
 
         let mut xfer = I3cXfer::new(cmds.as_mut_slice());
@@ -1636,7 +1630,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             self.reset_ctrl(RESET_CTRL_XFER_QUEUES);
             self.exit_halt(config);
             let _ = config.curr_xfer.swap(core::ptr::null_mut(), Ordering::AcqRel);
-            I3cDrvError::Timeout;
+            return Err(I3cDrvError::Timeout);
         }
 
         for (i, m) in msgs.iter_mut().enumerate() {
@@ -1645,8 +1639,10 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             }
         }
 
-        Ok(())
-        // xfer.ret
+        match xfer.ret {
+            0 => Ok(()),
+            _ => Err(I3cDrvError::Timeout),
+        }
     }
 
     fn target_tx_write(&mut self, buf: &[u8]) {
@@ -1784,7 +1780,7 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
             if rx_len != 0 {
                 let mut buf: [u8; 256] = [0u8; 256];
-                self.rd_ibi_fifo(&mut buf[..rx_len]);
+                self.rd_rx_fifo(&mut buf[..rx_len]);
                 i3c_debug!(self.logger, "Response data: {:02x?}", &buf[..rx_len]);
             }
 
@@ -1800,6 +1796,8 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
 
     fn target_pending_read_notify(&mut self, config: &mut I3cConfig, buf: &[u8], notifier: &mut I3cIbi) -> i32 {
         let reg = self.i3c.i3cd038().read().bits();
+        i3c_debug!(self.logger, "target_pending_read_notify: reg=0x{:08x}", reg);
+        i3c_debug!(self.logger, "SIR allowed by sw: {}", config.sir_allowed_by_sw);
         if !(config.sir_allowed_by_sw && (reg & SLV_EVENT_CTRL_SIR_EN != 0)) {
             return -13; // -EACCES
         }
