@@ -29,7 +29,6 @@ impl<H: HardwareInterface, L: Logger> I3cController<H, L> {
     }
 
     pub fn attach_i3c_dev(&mut self, pid: u64, desired_da: u8, slot: u8) -> Result<(), ()> {
-        // let da = self.config.pick_initial_da(static_addr, desired_da).ok_or(())?;
         if desired_da == 0 || desired_da >= I3C_BROADCAST_ADDR {
             return Err(());
         }
@@ -52,7 +51,6 @@ impl<H: HardwareInterface, L: Logger> I3cController<H, L> {
         self.config.attached.map_pos(slot, idx as u8);
         self.config.addrbook.mark_use(desired_da, true);
         self.hw.attach_i3c_dev(slot.into(), desired_da);
-        // self.hw.enable_dev_ibi(slot.into(), true);
 
         Ok(())
     }

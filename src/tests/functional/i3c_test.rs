@@ -13,7 +13,7 @@ use crate::i3c::ibi_workq::{IbiWork, i3c_ibi_workq_consumer};
 use crate::i3c::ast1060_i3c::{Ast1060I3c, I3C_MSG_READ, I3C_MSG_STOP};
 use crate::i3c::ast1060_i3c::HardwareInterface;
 use crate::i3c::ast1060_i3c::I3cMsg;
-use crate::i3c::ccc;
+use proposed_traits::i3c_master::I3c;
 use embedded_hal::delay::DelayNs;
 
 // I3cTarget
@@ -99,28 +99,8 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
             match work {
                 IbiWork::HotJoin => {
                     writeln!(uart, "[IBI] hotjoin\r").unwrap();
-                    let _ = ctrl.hw.do_entdaa(&mut ctrl.config, ctrl_dev_slot0.try_into().unwrap());
-                    let pid = ccc::ccc_getpid(&mut ctrl.hw, &mut ctrl.config, dyn_addr);
-                    match pid {
-                        Ok(pid) => {
-                            writeln!(uart, "  dev pid 0x{:x}\r", pid).unwrap();
-                        }
-                        Err(e) => {
-                            writeln!(uart, "  getpid err {}\r", e).unwrap();
-                        }
-                    }
-                    let bcr = ccc::ccc_getbcr(&mut ctrl.hw, &mut ctrl.config, dyn_addr);
-                    match bcr {
-                        Ok(bcr) => {
-                            writeln!(uart, "  dev bcr 0x{:02x}\r", bcr).unwrap();
-                        }
-                        Err(e) => {
-                            writeln!(uart, "  getbcr err {}\r", e).unwrap();
-                        }
-                    }
-                    let dev_idx = ctrl.config.attached.find_dev_idx_by_addr(dyn_addr).unwrap();
-                    ctrl.config.attached.devices[dev_idx].bcr = bcr.unwrap_or(0);
-                    let _ = ctrl.hw.ibi_enable(&mut ctrl.config, dyn_addr);
+                    let _ = ctrl.handle_hot_join();
+                    ctrl.assign_dynamic_address(dyn_addr).unwrap();
                 }
                 IbiWork::Sirq { addr, len, data } => {
                     writeln!(uart, "[IBI] SIRQ from 0x{:02x}, len {}\r", addr, len).unwrap();
@@ -129,6 +109,13 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
                         write!(uart, " {:02x}", data[i as usize]).unwrap();
                     }
                     writeln!(uart, "\r").unwrap();
+                    match ctrl.acknowledge_ibi(addr) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            writeln!(uart, "  acknowledge_ibi failed: {:?}\r", e).unwrap();
+
+                        }
+                    }
                     let mut rx_buf = [0u8; 128];
                     let mut msgs = [
                         I3cMsg {
@@ -142,7 +129,6 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
                         }
                     ];
                     let _ = ctrl.hw.priv_xfer(&mut ctrl.config, known_pid, &mut msgs);
-                    writeln!(uart, "  read {} bytes\r", msgs[0].actual_len).unwrap();
                     writeln!(uart, "  read data:").unwrap();
                     for i in 0..msgs[0].actual_len {
                         write!(uart, " {:02x}", rx_buf[i as usize]).unwrap();

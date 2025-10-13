@@ -12,79 +12,6 @@ use crate::i3c::i3c_config::{I3cConfig, Completion};
 use crate::i3c::ccc::*;
 use crate::i3c::ibi_workq;
 
-#[derive(Debug)]
-pub enum I3cDrvError {
-    NoDatPos,
-    NoMsgs,
-    TooManyMsgs,
-    InvalidArgs,
-    Timeout,
-    NoSuchDev,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum OnConflict {
-    KeepTemp,
-    PickNextFree,
-    TrySwapWithDesired,
-}
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum DaaError {
-    Busy,
-    NoResponse,
-    NoAddrAvail,
-    DeviceNotFound,
-    SetNewDaFailed,
-    Internal,
-}
-
-#[derive(Clone, Copy)]
-struct Handler {
-    func: fn(usize),
-    ctx: usize,
-}
-
-static BUS_HANDLERS: [Mutex<RefCell<Option<Handler>>>; 4] = [
-    Mutex::new(RefCell::new(None)),
-    Mutex::new(RefCell::new(None)),
-    Mutex::new(RefCell::new(None)),
-    Mutex::new(RefCell::new(None)),
-];
-
-
-pub fn register_i3c_irq_handler(bus: usize, func: fn(usize), ctx: usize) {
-    assert!(bus < 4);
-    critical_section::with(|cs| {
-        *BUS_HANDLERS[bus].borrow(cs).borrow_mut() = Some(Handler { func, ctx });
-    });
-}
-
-#[inline]
-fn dispatch_irq(bus: usize) {
-    critical_section::with(|cs| {
-        if let Some(h) = *BUS_HANDLERS[bus].borrow(cs).borrow() {
-            (h.func)(h.ctx);
-        }
-    });
-}
-
-#[no_mangle]
-pub extern "C" fn i3c() {
-    dispatch_irq(0);
-}
-#[no_mangle]
-pub extern "C" fn i3c1() {
-    dispatch_irq(1);
-}
-#[no_mangle]
-pub extern "C" fn i3c2() {
-    dispatch_irq(2);
-}
-#[no_mangle]
-pub extern "C" fn i3c3() {
-    dispatch_irq(3);
-}
-
 pub const I3C_MSG_WRITE: u8 = 0x0;
 pub const I3C_MSG_READ: u8 = 0x1;
 pub const I3C_MSG_STOP: u8 = 0x2;
@@ -117,10 +44,10 @@ pub const SLV_EVENT_CTRL_MRL_UPD : u32 = bit(6);
 pub const SLV_EVENT_CTRL_HJ_REQ : u32 = bit(3);
 pub const SLV_EVENT_CTRL_SIR_EN : u32 = bit(0);
 
-pub const I3CG_REG1_SCL_IN_SW_MODE_VAL: u32 = 1 << 23;
-pub const I3CG_REG1_SDA_IN_SW_MODE_VAL: u32 = 1 << 27;
-pub const I3CG_REG1_SCL_IN_SW_MODE_EN:  u32 = 1 << 28;
-pub const I3CG_REG1_SDA_IN_SW_MODE_EN:  u32 = 1 << 29;
+pub const I3CG_REG1_SCL_IN_SW_MODE_VAL: u32 = bit(23);
+pub const I3CG_REG1_SDA_IN_SW_MODE_VAL: u32 = bit(27);
+pub const I3CG_REG1_SCL_IN_SW_MODE_EN: u32 = bit(28);
+pub const I3CG_REG1_SDA_IN_SW_MODE_EN: u32 = bit(29);
 
 pub const CM_TFR_STS_MASTER_HALT: u8 = 0xf;
 pub const CM_TFR_STS_TARGET_HALT: u8 = 0x6;
@@ -157,53 +84,18 @@ pub const COMMAND_PORT_ARG_DATA_LEN: u32 = bits(31, 16);
 
 /// Device Address Table fields
 pub const DEV_ADDR_TABLE_LEGACY_I2C_DEV: u32 = bit(31);
-pub const DEV_ADDR_TABLE_DYNAMIC_ADDR:   u32 = bits(23, 16);     // GENMASK(23,16)
-pub const DEV_ADDR_TABLE_MR_REJECT:      u32 = bit(14);         // BIT(14)
-pub const DEV_ADDR_TABLE_SIR_REJECT:     u32 = bit(13);         // BIT(13)
-pub const DEV_ADDR_TABLE_IBI_MDB:        u32 = bit(12);         // BIT(12)
-pub const DEV_ADDR_TABLE_IBI_PEC:        u32 = bit(11);         // BIT(11)
-pub const DEV_ADDR_TABLE_STATIC_ADDR:    u32 = bits(6, 0);     // GENMASK(6,0)
+pub const DEV_ADDR_TABLE_DYNAMIC_ADDR:   u32 = bits(23, 16);
+pub const DEV_ADDR_TABLE_MR_REJECT:      u32 = bit(14);
+pub const DEV_ADDR_TABLE_SIR_REJECT:     u32 = bit(13);
+pub const DEV_ADDR_TABLE_IBI_MDB:        u32 = bit(12);
+pub const DEV_ADDR_TABLE_IBI_PEC:        u32 = bit(11);
+pub const DEV_ADDR_TABLE_STATIC_ADDR:    u32 = bits(6, 0);
 
 pub const IBI_QUEUE_STATUS: u32 = 0x18;
 pub const IBIQ_STATUS_IBI_ID: u32 = bits(15, 8);
 pub const IBIQ_STATUS_IBI_ID_SHIFT: u32 = 8;
 pub const IBIQ_STATUS_IBI_DATA_LEN: u32 = bits(7, 0);
 pub const IBIQ_STATUS_IBI_DATA_LEN_SHIFT: u32 = 0;
-
-pub const I3C_BCR_IBI_PAYLOAD_HAS_DATA_BYTE: u32 = bit(2);
-
-const MAX_CMDS: usize = 32;
-
-#[repr(u32)]
-pub enum SpeedI3c {
-    Sdr0   = 0x0,
-    Sdr1   = 0x1,
-    Sdr2   = 0x2,
-    Sdr3   = 0x3,
-    Sdr4   = 0x4,
-    HdrTs  = 0x5,
-    HdrDdr = 0x6,
-    I2cFmAsI3c = 0x7, // SPEED_I3C_I2C_FM
-}
-
-#[repr(u32)]
-pub enum SpeedI2c {
-    Fm  = 0x0,
-    Fmp = 0x1,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tid {
-    TargetIbi       = 0x1,
-    TargetRdData    = 0x2,
-    TargetMasterWr  = 0x8,
-    TargetMasterDef = 0xF,
-}
-
-pub enum I3cError {
-    NoSpace,     // -ENOSPC
-}
-pub type I3cResult<T> = core::result::Result<T, I3cError>;
 
 pub const COMMAND_PORT_DEV_COUNT: u32 = bits(25, 21);
 
@@ -235,27 +127,6 @@ pub const RESET_CTRL_XFER_QUEUES: u32 =
     | RESET_CTRL_RESP_QUEUE
     | RESET_CTRL_CMD_QUEUE;
 
-const fn genmask(msb: u32, lsb: u32) -> u32 {
-    let width = msb - lsb + 1;
-    if width >= 32 {
-        u32::MAX
-    } else {
-        ((1u32 << width) - 1) << lsb
-    }
-}
-
-#[inline(always)]
-const fn field_get(val: u32, mask: u32, shift: u32) -> u32 {
-    (val & mask) >> shift
-}
-
-pub const fn bit(n: u32) -> u32 { 1 << n }
-pub const fn bits(h: u32, l: u32) -> u32 { ((1u32 << (h - l + 1)) - 1) << l }
-pub const fn field_prep(mask: u32, val: u32) -> u32 {
-    (val << mask.trailing_zeros()) & mask
-}
-
-// ---- registers / fields ----
 pub const RESPONSE_QUEUE_PORT: u32 = 0x10;
 pub const RESPONSE_PORT_ERR_STATUS_SHIFT: u32 = 28;
 pub const RESPONSE_PORT_ERR_STATUS_MASK:  u32 = genmask(31, 28);
@@ -295,6 +166,108 @@ pub const INTR_CMD_QUEUE_READY_STAT: u32 = bit(3);
 pub const INTR_IBI_THLD_STAT:        u32 = bit(2);
 pub const INTR_RX_THLD_STAT:         u32 = bit(1);
 pub const INTR_TX_THLD_STAT:         u32 = bit(0);
+pub const I3C_BCR_IBI_PAYLOAD_HAS_DATA_BYTE: u32 = bit(2);
+
+pub const fn bit(n: u32) -> u32 { 1 << n }
+pub const fn bits(h: u32, l: u32) -> u32 { ((1u32 << (h - l + 1)) - 1) << l }
+pub const fn field_prep(mask: u32, val: u32) -> u32 {
+    (val << mask.trailing_zeros()) & mask
+}
+const fn field_get(val: u32, mask: u32, shift: u32) -> u32 {
+    (val & mask) >> shift
+}
+const fn genmask(msb: u32, lsb: u32) -> u32 {
+    let width = msb - lsb + 1;
+    if width >= 32 {
+        u32::MAX
+    } else {
+        ((1u32 << width) - 1) << lsb
+    }
+}
+
+const MAX_CMDS: usize = 32;
+
+#[derive(Debug)]
+pub enum I3cDrvError {
+    NoDatPos,
+    NoMsgs,
+    TooManyMsgs,
+    InvalidArgs,
+    Timeout,
+    NoSuchDev,
+}
+
+#[derive(Clone, Copy)]
+struct Handler {
+    func: fn(usize),
+    ctx: usize,
+}
+
+static BUS_HANDLERS: [Mutex<RefCell<Option<Handler>>>; 4] = [
+    Mutex::new(RefCell::new(None)),
+    Mutex::new(RefCell::new(None)),
+    Mutex::new(RefCell::new(None)),
+    Mutex::new(RefCell::new(None)),
+];
+
+pub fn register_i3c_irq_handler(bus: usize, func: fn(usize), ctx: usize) {
+    assert!(bus < 4);
+    critical_section::with(|cs| {
+        *BUS_HANDLERS[bus].borrow(cs).borrow_mut() = Some(Handler { func, ctx });
+    });
+}
+
+#[inline]
+fn dispatch_irq(bus: usize) {
+    critical_section::with(|cs| {
+        if let Some(h) = *BUS_HANDLERS[bus].borrow(cs).borrow() {
+            (h.func)(h.ctx);
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn i3c() {
+    dispatch_irq(0);
+}
+#[no_mangle]
+pub extern "C" fn i3c1() {
+    dispatch_irq(1);
+}
+#[no_mangle]
+pub extern "C" fn i3c2() {
+    dispatch_irq(2);
+}
+#[no_mangle]
+pub extern "C" fn i3c3() {
+    dispatch_irq(3);
+}
+
+#[repr(u32)]
+pub enum SpeedI3c {
+    Sdr0   = 0x0,
+    Sdr1   = 0x1,
+    Sdr2   = 0x2,
+    Sdr3   = 0x3,
+    Sdr4   = 0x4,
+    HdrTs  = 0x5,
+    HdrDdr = 0x6,
+    I2cFmAsI3c = 0x7, // SPEED_I3C_I2C_FM
+}
+
+#[repr(u32)]
+pub enum SpeedI2c {
+    Fm  = 0x0,
+    Fmp = 0x1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tid {
+    TargetIbi       = 0x1,
+    TargetRdData    = 0x2,
+    TargetMasterWr  = 0x8,
+    TargetMasterDef = 0xF,
+}
 
 pub enum I3cStatus {
     Ok,
@@ -420,8 +393,6 @@ pub trait HardwareInterface {
         F: FnMut() -> u32;
     fn rd_rx_fifo(&mut self, out: &mut [u8]);
     fn rd_ibi_fifo(&mut self, out: &mut [u8]);
-    fn enable_dev_ibi(&mut self, pos: usize, ibi_has_data_byte: bool) -> i32;
-    fn do_dev_entdaa(&mut self, config: &mut I3cConfig, dev_idx: u32) -> i32;
     fn ibi_enable(&mut self, config: &mut I3cConfig, addr: u8) -> Result<(), I3cDrvError>;
     fn start_xfer(&mut self, config: &mut I3cConfig, xfer: &mut I3cXfer);
     fn end_xfer(&mut self, config: &mut I3cConfig);
@@ -1265,8 +1236,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn start_xfer(&mut self, config: &mut I3cConfig, xfer: &mut I3cXfer) {
-
-        i3c_debug!(self.logger, "start_xfer: {} cmds", xfer.ncmds());
         let prev = config.curr_xfer.swap(core::ptr::from_mut(xfer).cast::<()>(), Ordering::AcqRel);
         // debug_assert!(prev.is_null(), "previous xfer still in flight");
         if !prev.is_null() {
@@ -1303,7 +1272,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     }
 
     fn end_xfer(&mut self, config: &mut I3cConfig) {
-        i3c_debug!(self.logger, "end_xfer");
         let p = config.curr_xfer.swap(core::ptr::null_mut(), Ordering::AcqRel);
         if p.is_null() {
             i3c_debug!(self.logger, "end_xfer: no current xfer");
@@ -1312,7 +1280,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         let xfer: &mut I3cXfer = unsafe { &mut *(p.cast::<I3cXfer>()) };
 
         let nresp = self.i3c.i3cd04c().read().respbufblr().bits() as usize;
-        i3c_debug!(self.logger, "end_xfer: nresp={}", nresp);
 
         for _ in 0..nresp {
             let resp = self.i3c.i3cd010().read().bits();
@@ -1353,12 +1320,10 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         }
 
         if ret != 0 {
-            i3c_debug!(self.logger, "end_xfer: error {}", ret);
             self.enter_halt(false, config);
             self.reset_ctrl(RESET_CTRL_QUEUES);
             self.exit_halt(config);
         }
-        i3c_debug!(self.logger, "end_xfer: done, ret={}", ret);
 
         xfer.ret = ret;
         xfer.done.complete();
@@ -1898,37 +1863,5 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
             self.enter_halt(true, config);
             self.exit_halt(config);
         }
-    }
-
-    fn enable_dev_ibi(&mut self, pos: usize, ibi_has_data_byte: bool) -> i32 {
-        let mut reg = i3c_dat_read!(self, pos as u32);
-        i3c_debug!(self.logger, "dat val before enable ibi: 0x{:08x}", reg);
-        if ibi_has_data_byte {
-            reg |= DEV_ADDR_TABLE_IBI_MDB | DEV_ADDR_TABLE_IBI_PEC;
-        }
-
-        i3c_dat_write!(self, pos as u32, |w| unsafe {
-            w.bits(reg)
-        });
-        i3c_debug!(self.logger, "dat val after enable ibi: 0x{:08x}", i3c_dat_read!(self, pos as u32));
-
-        let mut sir_reject = self.i3c.i3cd030().read().bits();
-        sir_reject &= !bit(pos as u32);
-        self.i3c.i3cd030().write(|w| unsafe { w.bits(sir_reject) });
-
-        self.i3c.i3cd040().modify(|_, w| {
-            w.ibithldstaten().set_bit()
-        });
-
-        self.i3c.i3cd044().modify(|_, w| {
-            w.ibithldsignalen().set_bit()
-        });
-
-        0
-    }
-
-    fn do_dev_entdaa(&mut self, config: &mut I3cConfig, dev_idx: u32) -> i32 {
-        self.do_entdaa(config, dev_idx);
-        0
     }
 }

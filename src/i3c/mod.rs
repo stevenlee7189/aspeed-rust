@@ -4,4 +4,5 @@ pub mod ast1060_i3c;
 pub mod i3c_config;
 pub mod i3c_controller;
 pub mod ibi_workq;
+pub mod i3c_master;
 pub mod ccc;
