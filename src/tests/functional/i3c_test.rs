@@ -15,10 +15,9 @@ use crate::i3c::ast1060_i3c::HardwareInterface;
 use crate::i3c::ast1060_i3c::I3cMsg;
 use proposed_traits::i3c_master::I3c;
 use embedded_hal::delay::DelayNs;
-
 // I3cTarget
-use crate::i3c::ast1060_i3c::I3cIbi;
-use crate::i3c::ast1060_i3c::I3cIbiType;
+use proposed_traits::i3c_target::{DynamicAddressable, IBICapable};
+
 
 pub fn dump_i3c_controller_registers(uart: &mut UartController<'_>, base: u32) {
     // [7e7a4000] 80000200 00008009 000f40bb 00000000
@@ -143,17 +142,6 @@ pub fn test_i3c_master(uart: &mut UartController<'_>) {
     }
 }
 
-fn crc8_ccitt(mut crc: u8, data: &[u8]) -> u8 {
-    for &b in data {
-        let mut x = crc ^ b;
-        for _ in 0..8 {
-            x = if (x & 0x80) != 0 { (x << 1) ^ 0x07 } else { x << 1 };
-        }
-        crc = x;
-    }
-    crc
-}
-
 pub fn test_i3c_target(uart: &mut UartController<'_>) {
     let peripherals = unsafe { Peripherals::steal() };
     let mut delay = DummyDelay {};
@@ -192,11 +180,11 @@ pub fn test_i3c_target(uart: &mut UartController<'_>) {
     }
     let mut ibi_cons = i3c_ibi_workq_consumer(ctrl.hw.bus_num() as usize);
     ctrl.init();
-    let dyn_addr = 8;
+    let dyn_addr = 9;
     let dev_idx = 0;
     ctrl.hw.attach_i3c_dev(dev_idx, dyn_addr);
     // Dump I3C2 registers
-    dump_i3c_controller_registers(uart, 0x7e7a_4000);
+    // dump_i3c_controller_registers(uart, 0x7e7a_4000);
     loop {
         if let Some(work) = ibi_cons.dequeue() {
             match work {
@@ -213,34 +201,25 @@ pub fn test_i3c_target(uart: &mut UartController<'_>) {
                     let mut delay = DummyDelay {};
                     delay.delay_ns(4_000_000_000);
                     writeln!(uart, "[IBI] TargetDaAssignment\r").unwrap();
-                    writeln!(uart, "  allow SIR by SW\r").unwrap();
                     let da = ctrl.config.target_config.as_ref().unwrap().addr;
                     writeln!(uart, "  dyn addr 0x{:02x} was assigned by master\r", da.unwrap()).unwrap();
-                    ctrl.config.sir_allowed_by_sw = true;
-                    let reg = ctrl.hw.i3c.i3cd038().read().bits();
-                    if reg != 0 {
-                        let mdb = ctrl.config.target_config.as_ref().unwrap().mdb;
-                        let addr_rnw;
-                        if let Some(da_val) = da {
-                            addr_rnw = (da_val << 1) | 0x1;
-                        } else {
-                            writeln!(uart, "  no dyn addr\r").unwrap();
-                            return;
-                        }
-                        let mut pec = crc8_ccitt(0, &[addr_rnw]);
-                        pec = crc8_ccitt(pec, &[mdb]);
-                        writeln!(uart, "  assigned dyn addr 0x{:02x}, mdb 0x{:02x}, pec 0x{:02x}\r", da.unwrap(), mdb, pec).unwrap();
-
-                        let payload = [mdb, pec];
-                        let mut data_to_read = [0u8; 16];
-                        for (i, b) in data_to_read.iter_mut().enumerate() { *b = i as u8; }
-
-                        let mut ibi = I3cIbi { ibi_type: I3cIbiType::TargetIntr, payload: Some(&payload) };
-                        let rc = ctrl.hw.target_pending_read_notify(&mut ctrl.config, &data_to_read, &mut ibi);
-                        writeln!(uart, "  pending_read_notify rc {}\r", rc).unwrap();
-                    }
+                    ctrl.on_dynamic_address_assigned(da.unwrap());
+                    break;
                 }
             }
         }
     }
+    let mut ibi_count = 0;
+    loop {
+        let mut delay = DummyDelay {};
+        delay.delay_ns(4_000_000_000);
+        let mut data = [0u8; 16];
+        for (i, b) in data.iter_mut().enumerate() { *b = i as u8; }
+        writeln!(uart, "send ibi #{}\r", ibi_count).unwrap();
+        ctrl.get_ibi_payload(&mut data).unwrap();
+        ibi_count += 1;
+        if ibi_count > 100 { break; }
+    }
+
+    writeln!(uart, "I3C target test done\r").unwrap();
 }

@@ -1797,7 +1797,6 @@ impl <I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
     fn target_pending_read_notify(&mut self, config: &mut I3cConfig, buf: &[u8], notifier: &mut I3cIbi) -> i32 {
         let reg = self.i3c.i3cd038().read().bits();
         i3c_debug!(self.logger, "target_pending_read_notify: reg=0x{:08x}", reg);
-        i3c_debug!(self.logger, "SIR allowed by sw: {}", config.sir_allowed_by_sw);
         if !(config.sir_allowed_by_sw && (reg & SLV_EVENT_CTRL_SIR_EN != 0)) {
             return -13; // -EACCES
         }
