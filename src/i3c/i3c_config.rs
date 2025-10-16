@@ -1,7 +1,19 @@
 use core::marker::PhantomData;
-use core::sync::atomic::{AtomicPtr, AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use embedded_hal::delay::DelayNs;
 use heapless::Vec;
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum I3cConfigError {
+    AddrInUse,
+    AddrExhausted,
+    NoFreeSlot,
+    DevNotFound,
+    DevAlreadyAttached,
+    InvalidParam,
+    Other,
+}
 
 #[derive(Default)]
 pub struct CommonState {
@@ -26,7 +38,8 @@ pub struct I3cTargetConfig {
 }
 
 impl I3cTargetConfig {
-    pub const fn new(flags: u8,  addr: Option<u8>, mdb:u8) -> Self {
+    #[must_use]
+    pub const fn new(flags: u8, addr: Option<u8>, mdb: u8) -> Self {
         Self { flags, addr, mdb }
     }
 }
@@ -36,22 +49,37 @@ pub struct AddrBook {
     pub reserved: [bool; 128],
 }
 
+impl Default for AddrBook {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AddrBook {
+    #[must_use]
     pub const fn new() -> Self {
-        Self { in_use: [false;128], reserved: [false;128] }
+        Self {
+            in_use: [false; 128],
+            reserved: [false; 128],
+        }
     }
 
     #[inline]
+    #[must_use]
     pub fn is_free(&self, a: u8) -> bool {
         !self.in_use[a as usize] && !self.reserved[a as usize]
     }
 
     pub fn reserve_defaults(&mut self) {
-        for a in 0..=7 { self.reserved[a as usize] = true; }
-        self.reserved[0x7E as usize] = true;
+        for a in 0usize..=7 {
+            self.reserved[a] = true;
+        }
+        self.reserved[0x7E_usize] = true;
         for i in 0..=7 {
             let alt = 0x7E ^ (1u8 << i);
-            if alt <= 0x7E { self.reserved[alt as usize] = true; }
+            if alt <= 0x7E {
+                self.reserved[alt as usize] = true;
+            }
         }
     }
 
@@ -69,12 +97,17 @@ impl AddrBook {
 
     #[inline]
     pub fn mark_use(&mut self, a: u8, used: bool) {
-        if a != 0 { self.in_use[a as usize] = used; }
+        if a != 0 {
+            self.in_use[a as usize] = used;
+        }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DevKind { I3c, I2c }
+pub enum DevKind {
+    I3c,
+    I2c,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeviceEntry {
@@ -99,14 +132,24 @@ pub struct Attached {
     pub by_pos: [Option<u8>; 8],
 }
 
+impl Default for Attached {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Attached {
+    #[must_use]
     pub const fn new() -> Self {
-        Self { devices: heapless::Vec::new(), by_pos: [None; 8] }
+        Self {
+            devices: heapless::Vec::new(),
+            by_pos: [None; 8],
+        }
     }
 
-    pub fn attach(&mut self, dev: DeviceEntry) -> Result<usize, ()> {
+    pub fn attach(&mut self, dev: DeviceEntry) -> Result<usize, I3cConfigError> {
         let idx = self.devices.len();
-        self.devices.push(dev).map_err(|_| ())?;
+        self.devices.push(dev).map_err(|_| I3cConfigError::NoFreeSlot)?;
         Ok(idx)
     }
 
@@ -126,7 +169,7 @@ impl Attached {
             if let Some(idx) = *bp {
                 let idx_usize = idx as usize;
                 if idx_usize > dev_idx {
-                    *bp = Some((idx_usize - 1) as u8);
+                    *bp = Some(u8::try_from(idx_usize - 1).expect("idx too large"));
                 }
             }
         }
@@ -137,38 +180,55 @@ impl Attached {
             self.detach(*dev_idx as usize);
         }
     }
+    #[must_use]
     pub fn pos_of(&self, dev_idx: usize) -> Option<u8> {
         self.by_pos
             .iter()
-            .position(|&v| v == Some(dev_idx as u8))
-            .map(|p| p as u8)
+            .position(|&v| v == Some(u8::try_from(dev_idx).expect("dev_idx too large")))
+            .and_then(|p| u8::try_from(p).ok())
     }
+    #[must_use]
     pub fn find_dev_idx_by_addr(&self, da: u8) -> Option<usize> {
         self.devices.iter().position(|d| d.dyn_addr == da)
     }
+    #[must_use]
     pub fn pos_of_addr(&self, da: u8) -> Option<u8> {
         let dev_idx = self.devices.iter().position(|d| d.dyn_addr == da)?;
         self.pos_of(dev_idx)
     }
+    #[must_use]
     pub fn pos_of_pid(&self, pid: u64) -> Option<u8> {
         let dev_idx = self.devices.iter().position(|d| d.pid == Some(pid))?;
         self.pos_of(dev_idx)
     }
 
     #[inline]
-    pub fn map_pos(&mut self, pos: u8, idx: u8) { self.by_pos[pos as usize] = Some(idx); }
+    pub fn map_pos(&mut self, pos: u8, idx: u8) {
+        self.by_pos[pos as usize] = Some(idx);
+    }
 
     #[inline]
-    pub fn unmap_pos(&mut self, pos: u8) { self.by_pos[pos as usize] = None; }
+    pub fn unmap_pos(&mut self, pos: u8) {
+        self.by_pos[pos as usize] = None;
+    }
 }
 
 pub struct Completion {
     done: AtomicBool,
 }
 
+impl Default for Completion {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Completion {
+    #[must_use]
     pub const fn new() -> Self {
-        Self { done: AtomicBool::new(false) }
+        Self {
+            done: AtomicBool::new(false),
+        }
     }
 
     #[inline]
@@ -237,7 +297,14 @@ pub struct I3cConfig {
     pub target_data_done: Completion,
 }
 
+impl Default for I3cConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl I3cConfig {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             common: CommonState::default(),
@@ -282,21 +349,29 @@ impl I3cConfig {
         self.addrbook.alloc_from(8)
     }
 
-    pub fn reassign_da(&mut self, from: u8, to: u8) -> Result<(), ()> {
-        if from == to { return Ok(()); }
-        if !self.addrbook.is_free(to) { return Err(()); }
+    pub fn reassign_da(&mut self, from: u8, to: u8) -> Result<(), I3cConfigError> {
+        if from == to {
+            return Ok(());
+        }
+        if !self.addrbook.is_free(to) {
+            return Err(I3cConfigError::AddrInUse);
+        }
 
         self.addrbook.mark_use(from, false);
-        self.addrbook.mark_use(to,   true);
+        self.addrbook.mark_use(to, true);
 
-        if let Some((i, mut e)) = self.attached.devices
+        if let Some((i, mut e)) = self
+            .attached
+            .devices
             .iter()
-                .enumerate()
-                .find_map(|(i, d)| (d.dyn_addr == from).then_some((i, *d)))
+            .enumerate()
+            .find_map(|(i, d)| (d.dyn_addr == from).then_some((i, *d)))
         {
             e.dyn_addr = to;
             self.attached.devices[i] = e;
             Ok(())
-        } else { Err(()) }
+        } else {
+            Err(I3cConfigError::DevNotFound)
+        }
     }
 }

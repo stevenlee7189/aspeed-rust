@@ -17,6 +17,7 @@ use aspeed_ddk::spi;
 use aspeed_ddk::syscon::{ClockId, ResetId, SysCon};
 use fugit::MillisDurationU32 as MilliSeconds;
 
+use aspeed_ddk::spimonitor::{RegionInfo, SpiMonitor, SpimExtMuxSel};
 use aspeed_ddk::tests::functional::ecdsa_test::run_ecdsa_tests;
 use aspeed_ddk::tests::functional::gpio_test;
 use aspeed_ddk::tests::functional::hash_test::run_hash_tests;
@@ -25,7 +26,6 @@ use aspeed_ddk::tests::functional::i2c_test;
 use aspeed_ddk::tests::functional::i3c_test;
 use aspeed_ddk::tests::functional::rsa_test::run_rsa_tests;
 use aspeed_ddk::tests::functional::timer_test::run_timer_tests;
-use aspeed_ddk::spimonitor::{RegionInfo, SpiMonitor, SpimExtMuxSel};
 use panic_halt as _;
 
 use proposed_traits::system_control::ResetControl;
@@ -197,42 +197,41 @@ fn main() -> ! {
     let reset_id = ResetId::RstHACE;
     let _ = syscon.reset_deassert(&reset_id);
 
-    // let mut hace_controller = HaceController::new(&hace);
-    //
-    // run_hash_tests(&mut uart_controller, &mut hace_controller);
-    //
-    // run_hmac_tests(&mut uart_controller, &mut hace_controller);
-    //
-    // // Enable RSA and ECC
-    // let _ = syscon.enable_clock(ClockId::ClkRSACLK as u8);
-    //
-    // let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
-    // run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
-    //
-    // let mut rsa = AspeedRsa::new(&secure, delay);
-    // run_rsa_tests(&mut uart_controller, &mut rsa);
-    // gpio_test::test_gpioa(&mut uart_controller);
-    // i2c_test::test_i2c_master(&mut uart_controller);
-    // #[cfg(feature = "i2c_target")]
-    // i2c_test::test_i2c_slave(&mut uart_controller);
-    // #[cfg(feature = "i3c_target")]
-    // i3c_test::test_i3c_slave(&mut uart_controller);
-    setup_bmc_sequence(&mut uart_controller);
+    let mut hace_controller = HaceController::new(&hace);
 
-    // i3c_test::test_i3c_master(&mut uart_controller);
+    run_hash_tests(&mut uart_controller, &mut hace_controller);
+
+    run_hmac_tests(&mut uart_controller, &mut hace_controller);
+
+    // Enable RSA and ECC
+    let _ = syscon.enable_clock(ClockId::ClkRSACLK as u8);
+
+    let mut ecdsa = AspeedEcdsa::new(&secure, delay.clone());
+    run_ecdsa_tests(&mut uart_controller, &mut ecdsa);
+
+    let mut rsa = AspeedRsa::new(&secure, delay);
+    run_rsa_tests(&mut uart_controller, &mut rsa);
+    gpio_test::test_gpioa(&mut uart_controller);
+    i2c_test::test_i2c_master(&mut uart_controller);
+    #[cfg(feature = "i2c_target")]
+    i2c_test::test_i2c_slave(&mut uart_controller);
+    // #[cfg(feature = "i3c_target")]
+    setup_bmc_sequence(&mut uart_controller);
+    i3c_test::test_i3c_master(&mut uart_controller);
+    // #[cfg(feature = "i3c_target")]
     i3c_test::test_i3c_target(&mut uart_controller);
 
-    // test_wdt(&mut uart_controller);
-    // run_timer_tests(&mut uart_controller);
-    //
-    // let test_spicontroller = false;
-    // if test_spicontroller {
-    //     spi::spitest::test_fmc(&mut uart_controller);
-    //     spi::spitest::test_spi(&mut uart_controller);
-    //
-    //     gpio_test::test_gpio_flash_power(&mut uart_controller);
-    //     spi::spitest::test_spi2(&mut uart_controller);
-    // }
+    test_wdt(&mut uart_controller);
+    run_timer_tests(&mut uart_controller);
+
+    let test_spicontroller = false;
+    if test_spicontroller {
+        spi::spitest::test_fmc(&mut uart_controller);
+        spi::spitest::test_spi(&mut uart_controller);
+
+        gpio_test::test_gpio_flash_power(&mut uart_controller);
+        spi::spitest::test_spi2(&mut uart_controller);
+    }
     // Initialize the peripherals here if needed
     loop {
         cortex_m::asm::wfi();

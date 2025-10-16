@@ -1,25 +1,29 @@
 // Licensed under the Apache-2.0 license
 
-use proposed_traits::i3c_master::{I3c, I3cSpeed, ErrorKind, Error, ErrorType};
+use proposed_traits::i3c_master::{Error, ErrorKind, ErrorType, I3c, I3cSpeed};
 
 use embedded_hal::i2c::SevenBitAddress;
 
-use crate::i3c::ast1060_i3c::HardwareInterface;
-use crate::i3c::i3c_controller::I3cController;
-use crate::i3c::ccc;
 use crate::common::Logger;
+use crate::i3c::ast1060_i3c::HardwareInterface;
+use crate::i3c::ccc;
+use crate::i3c::i3c_controller::I3cController;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct I3cMasterError(pub ErrorKind);
 
 impl Error for I3cMasterError {
     #[inline]
-    fn kind(&self) -> ErrorKind { self.0 }
+    fn kind(&self) -> ErrorKind {
+        self.0
+    }
 }
 
 impl From<ErrorKind> for I3cMasterError {
     #[inline]
-    fn from(k: ErrorKind) -> Self { I3cMasterError(k) }
+    fn from(k: ErrorKind) -> Self {
+        I3cMasterError(k)
+    }
 }
 
 impl<H: HardwareInterface, L: Logger> ErrorType for I3cController<H, L> {
@@ -31,16 +35,18 @@ impl<H: HardwareInterface, L: Logger> I3c for I3cController<H, L> {
         &mut self,
         static_address: SevenBitAddress,
     ) -> Result<SevenBitAddress, Self::Error> {
-
         let slot = self
             .config
             .attached
             .pos_of_addr(static_address)
             .ok_or(I3cMasterError(ErrorKind::DynamicAddressConflict))?;
 
-        let ret = self.hw.do_entdaa(&mut self.config, slot.into());
-        if ret != 0 {
-            return Err(I3cMasterError(ErrorKind::DynamicAddressConflict));
+        let rc = self.hw.do_entdaa(&mut self.config, slot.into());
+        match rc {
+            Ok(()) => {}
+            Err(_) => {
+                return Err(I3cMasterError(ErrorKind::DynamicAddressConflict));
+            }
         }
 
         let pid = {
@@ -106,7 +112,8 @@ impl<H: HardwareInterface, L: Logger> I3c for I3cController<H, L> {
     }
 
     fn acknowledge_ibi(&mut self, address: SevenBitAddress) -> Result<(), Self::Error> {
-        let dev_idx = self.config
+        let dev_idx = self
+            .config
             .attached
             .find_dev_idx_by_addr(address)
             .ok_or(I3cMasterError(ErrorKind::Other))?;
