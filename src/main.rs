@@ -215,10 +215,11 @@ fn main() -> ! {
     i2c_test::test_i2c_master(&mut uart_controller);
     #[cfg(feature = "i2c_target")]
     i2c_test::test_i2c_slave(&mut uart_controller);
-    // #[cfg(feature = "i3c_target")]
+    #[cfg(any(feature = "i3c_master", feature = "i3c_target"))]
     setup_bmc_sequence(&mut uart_controller);
+    #[cfg(feature = "i3c_master")]
     i3c_test::test_i3c_master(&mut uart_controller);
-    // #[cfg(feature = "i3c_target")]
+    #[cfg(feature = "i3c_target")]
     i3c_test::test_i3c_target(&mut uart_controller);
 
     test_wdt(&mut uart_controller);

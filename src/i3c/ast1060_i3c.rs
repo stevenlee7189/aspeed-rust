@@ -697,6 +697,7 @@ where
 }
 
 impl<I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
+    #[allow(clippy::too_many_lines)]
     fn init(&mut self, config: &mut I3cConfig) {
         i3c_debug!(self.logger, "i3c init");
 
@@ -1534,6 +1535,7 @@ impl<I3C: Instance, L: Logger> HardwareInterface for Ast1060I3c<I3C, L> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn do_ccc(&mut self, config: &mut I3cConfig, payload: &mut CccPayload<'_, '_>) -> Result<(), I3cDrvError> {
         // init i3c_cmd to all 0
         let mut cmds = [I3cCmd {
