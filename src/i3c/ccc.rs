@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use super::ast1060_i3c::HardwareInterface;
 use super::i3c_config::I3cConfig;
 

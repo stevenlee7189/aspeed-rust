@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use embedded_hal::delay::DelayNs;

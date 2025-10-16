@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use core::convert::Infallible;
 
 use embedded_hal::i2c::ErrorType as HalI2cErrorType;
